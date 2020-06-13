@@ -287,7 +287,7 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
         """
         return trans.app.config.user_preferences_extra['preferences']
 
-    def _build_extra_user_pref_inputs(self, preferences, user):
+    def _build_extra_user_pref_inputs(self, trans, preferences, user):
         """
         Build extra user preferences inputs list.
         Add values to the fields if present
@@ -295,6 +295,7 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
         if not preferences:
             return []
         extra_pref_inputs = list()
+        user_extra_prefs = user.get_extra_preferences(trans.security)
         # Build sections for different categories of inputs
         for item, value in preferences.items():
             if value is not None:
@@ -307,10 +308,10 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
                     else:
                         input['help'] = required
                     field = item + '|' + input['name']
-                    for data_item in user.extra_preferences:
+                    for data_item in user_extra_prefs:
                         if field in data_item:
-                            input['value'] = user.extra_preferences[data_item]
-                extra_pref_inputs.append({'type': 'section', 'title': value['description'], 'name': item, 'expanded': True, 'inputs': input_fields})
+                            input['value'] = user_extra_prefs[data_item]
+                extra_pref_inputs.append({'type': 'section', 'title': value['description'], 'name': item, 'expanded': True, 'inputs': value['inputs']})
         return extra_pref_inputs
 
     @expose_api
@@ -381,7 +382,7 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
             inputs.append(address_repeat)
 
             # Build input sections for extra user preferences
-            extra_user_pref = self._build_extra_user_pref_inputs(self._get_extra_user_preferences(trans), user)
+            extra_user_pref = self._build_extra_user_pref_inputs(trans, self._get_extra_user_preferences(trans), user)
             for item in extra_user_pref:
                 inputs.append(item)
         else:
@@ -472,7 +473,7 @@ class UserAPIController(BaseAPIController, UsesTagsMixin, CreatesApiKeysMixin, B
                                 if input['name'] == keys[1] and input['required']:
                                     raise exceptions.ObjectAttributeMissingException("Please fill the required field")
                         extra_user_pref_data[item] = payload[item]
-            user.preferences["extra_user_preferences"] = json.dumps(extra_user_pref_data)
+            user.set_extra_preferences(trans.security, extra_user_pref_data)
 
         # Update user addresses
         address_dicts = {}
