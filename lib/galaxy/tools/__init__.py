@@ -1968,7 +1968,7 @@ class Tool(Dictifiable):
 
         tool_class = self.__class__
         # FIXME: the Tool class should declare directly, instead of ad hoc inspection
-        regular_form = tool_class == Tool or isinstance(self, (DatabaseOperationTool, InteractiveTool))
+        regular_form = tool_class == Tool or isinstance(self, (DatabaseOperationTool, InteractiveTool)) or self.id == "owncloud_import"
         tool_dict["form_style"] = "regular" if regular_form else "special"
 
         return tool_dict
