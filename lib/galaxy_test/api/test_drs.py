@@ -11,11 +11,6 @@ from urllib.parse import (
 
 import requests
 
-from galaxy.files import (
-    ConfiguredFileSources,
-    ConfiguredFileSourcesConfig,
-    DictFileSourcesUserContext,
-)
 from galaxy.util.drs import (
     fetch_drs_to_file,
     RetryOptions,
@@ -29,18 +24,6 @@ CONTENT = "My Cool DRS Data\n"
 HTTP_METHODS: List[Callable[[str], requests.Response]] = [requests.get, requests.post]
 
 CHECKSUM_TEST_SLEEP_TIME = 3.0
-
-
-def user_context_fixture():
-    file_sources_config = ConfiguredFileSourcesConfig()
-    file_sources = ConfiguredFileSources(file_sources_config, load_stock_plugins=True)
-    user_context = DictFileSourcesUserContext(
-        preferences={
-            "oidc|bearer_token": "IBearTokens",
-        },
-        file_sources=file_sources,
-    )
-    return user_context
 
 
 class TestDrsApi(ApiTestCase):
@@ -112,13 +95,7 @@ class TestDrsApi(ApiTestCase):
         with tempfile.NamedTemporaryFile(prefix="gxtest_drs") as tf:
             retry_options = RetryOptions()
             retry_options.override_retry_after = CHECKSUM_TEST_SLEEP_TIME
-            fetch_drs_to_file(
-                drs_uri,
-                tf.name,
-                user_context=user_context_fixture(),
-                force_http=force_http,
-                retry_options=retry_options,
-            )
+            fetch_drs_to_file(drs_uri, tf.name, force_http=force_http, retry_options=retry_options)
             with open(tf.name) as f:
                 assert CONTENT == f.read()
 

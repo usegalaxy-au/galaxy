@@ -42,8 +42,8 @@ class FilesSourcePlugin(Model):
         description="The type of the plugin.",
         example="gximport",
     )
-    uri_root: Optional[str] = Field(
-        None,
+    uri_root: str = Field(
+        ...,  # This field is required
         title="URI root",
         description="The URI root used by this type of plugin.",
         example="gximport://",
@@ -96,7 +96,6 @@ class FilesSourcePluginList(Model):
                 "label": "Library Import Directory",
                 "doc": "Galaxy's library import directory",
                 "writable": False,
-                "browsable": True,
             }
         ],
     )
