@@ -16,9 +16,8 @@
                 </b-nav>
             </template>
             <div v-if="source === 'histories'" class="infomessage">
-                When writing up your analysis, remember to include all references that should be cited in order to
-                completely describe your work. Also, please remember to
-                <a href="https://galaxyproject.org/citing-galaxy">cite Galaxy</a>.
+                Please cite Galaxy Australia (first DOI listed below) in any publication resulting for data you analysed on this service. An example sentence is provided here:<br>
+                We wish to acknowledge Galaxy Australia (as funded by BioCommons, MB, QCIF, AARNET, ARDC, Queensland Government, NCI, Pawsey, Azure) for supporting the analyses shown in this publication.
             </div>
             <div class="citations-formatted">
                 <Citation
