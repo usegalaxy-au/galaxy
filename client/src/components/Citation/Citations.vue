@@ -16,9 +16,10 @@
                 </b-nav>
             </template>
             <div v-if="source === 'histories'" class="infomessage">
-                When writing up your analysis, remember to include all references that should be cited in order to
-                completely describe your work. Also, please remember to
-                <a href="https://galaxyproject.org/citing-galaxy">cite Galaxy</a>.
+                Please cite <b>Galaxy Australia</b> (below) in any publication resulting for analysis you performed on this service.<br><br>
+                When acknowledging Galaxy Australia in any publication or presentation, we recommend the following acknowledgement statement:<br><br>
+                “This work was conducted on Galaxy Australia, supported by the Australian BioCommons which is enabled by NCRIS via Bioplatforms Australia funding, the University of Melbourne, QCIF, AARNet, ARDC and the Queensland Government”.<br><br>
+                You are also welcome to use our logo. A variety of logo formats are available for <a href="">download</a>, and the accompanying usage guidelines are <a href="">here</a>.
             </div>
             <div class="citations-formatted">
                 <Citation
