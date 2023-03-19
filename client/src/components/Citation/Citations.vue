@@ -16,8 +16,10 @@
                 </b-nav>
             </template>
             <div v-if="source === 'histories'" class="infomessage">
-                Please cite Galaxy Australia (first DOI listed below) in any publication resulting for data you analysed on this service. An example sentence is provided here:<br>
-                We wish to acknowledge Galaxy Australia (as funded by BioCommons, MB, QCIF, AARNET, ARDC, Queensland Government, NCI, Pawsey, Azure) for supporting the analyses shown in this publication.
+                Please cite <b>Galaxy Australia</b> (below) in any publication resulting for analysis you performed on this service.<br><br>
+                When acknowledging Galaxy Australia in any publication or presentation, we recommend the following acknowledgement statement:<br><br>
+                “This work was conducted on Galaxy Australia, supported by the Australian BioCommons which is enabled by NCRIS via Bioplatforms Australia funding, the University of Melbourne, QCIF, AARNet, ARDC and the Queensland Government”.<br><br>
+                You are also welcome to use our logo. A variety of logo formats are available for <a href="">download</a>, and the accompanying usage guidelines are <a href="">here</a>.
             </div>
             <div class="citations-formatted">
                 <Citation
