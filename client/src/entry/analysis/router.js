@@ -96,6 +96,7 @@ import Sharing from "@/components/Sharing/SharingPage.vue";
 import ToolOntologies from "@/components/ToolsList/ToolOntologies.vue";
 import HistoryStorageOverview from "@/components/User/DiskUsage/Visualizations/HistoryStorageOverview.vue";
 import UserDatasetPermissions from "@/components/User/UserDatasetPermissions.vue";
+import UserOidcProfile from "@/components/User/UserOidcProfile.vue";
 import WorkflowPublished from "@/components/Workflow/Published/WorkflowPublished.vue";
 import WorkflowRerun from "@/components/Workflow/Run/WorkflowRerun.vue";
 import WorkflowRun from "@/components/Workflow/Run/WorkflowRun.vue";
@@ -611,6 +612,11 @@ export function getRouter(Galaxy) {
                     {
                         path: "user/credentials",
                         component: CredentialsManagement,
+                        redirect: redirectAnon(),
+                    },
+                    {
+                        path: "user/oidc-profile",
+                        component: UserOidcProfile,
                         redirect: redirectAnon(),
                     },
                     {
