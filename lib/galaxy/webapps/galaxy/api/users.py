@@ -847,7 +847,7 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
                         "type": "text",
                         "label": "Public name",
                         "value": username,
-                        "help": 'Your public name is an identifier that will be used to generate addresses for information you share publicly. Public names must be at least three characters in length and contain only lower-case letters, numbers, dots, underscores, and dashes (".", "_", "-").',
+                        "help": 'Your public name is an identifier that will be used to generate addresses for information you share publicly. Public names must start with a lower-case letter or number, be between 3 and 128 characters in length, and contain only lower-case letters, numbers, underscores, and dashes ("_", "-").',
                     }
                 )
             info_form_models = self.get_all_forms(
