@@ -949,6 +949,7 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
             message = validate_email(trans, email, user)
             if message:
                 raise exceptions.RequestParameterInvalidException(message)
+            email = email.lower()
             if user.email != email:
                 # Update user email and user's private role name which must match
                 private_role = trans.app.security_agent.get_private_user_role(user)

@@ -132,6 +132,7 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
         """
         Create a new user.
         """
+        email = email.lower()
         self._error_on_duplicate_email(email)
         user = self.model_class(email=email)
         if password:
@@ -173,7 +174,7 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
         """Get all jobs that are not ready yet and belong to the given user."""
         stmt = select(Job).where(and_(Job.user_id == user.id, Job.state.in_(Job.non_ready_states)))
         jobs = self.session().scalars(stmt)
-        return jobs  # type:ignore[return-value]
+        return jobs  # type: ignore[return-value]
 
     def undelete(self, user, flush=True):
         """Remove the deleted flag for the given user."""
