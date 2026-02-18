@@ -174,9 +174,10 @@ async function submit() {
 
                                         <BFormText v-localize>
                                             Your public name is an identifier that will be used to generate addresses
-                                            for information you share publicly. Public names must be at least three
-                                            characters in length and contain only lower-case letters, numbers, dots,
-                                            underscores, and dashes ('.', '_', '-').
+                                            for information you share publicly. Public names must start with a
+                                            lower-case letter or number, be between 3 and 128 characters in length, and
+                                            contain only lower-case letters, numbers, underscores, and dashes ('_',
+                                            '-').
                                         </BFormText>
                                     </BFormGroup>
 

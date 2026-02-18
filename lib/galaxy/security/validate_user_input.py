@@ -36,9 +36,10 @@ VALID_EMAIL_RE = re.compile(r"^[\w.!#$%&'*+\/=?^_`{|}~-]+@[\w](?:[\w-]{0,61}[\w]
 EMAIL_MAX_LEN = 255
 
 # Public name validity parameters
-PUBLICNAME_MAX_LEN = 255
-VALID_PUBLICNAME_RE = re.compile(r"^[a-z0-9._\-]+$")
-VALID_PUBLICNAME_SUB = re.compile(r"[^a-z0-9._\-]")
+PUBLICNAME_MAX_LEN = 128
+PUBLICNAME_MIN_LEN = 3
+VALID_PUBLICNAME_RE = re.compile(r"^[a-z0-9][-a-z0-9_]{2,127}$")
+VALID_PUBLICNAME_SUB = re.compile(r"[^a-z0-9_-]")
 FILL_CHAR = "-"
 
 # Password validity parameters
@@ -71,10 +72,12 @@ def validate_publicname_str(publicname):
     """Validates a string containing a public username."""
     if not publicname:
         return "Public name cannot be empty"
-    if len(publicname) > PUBLICNAME_MAX_LEN:
-        return f"Public name cannot be more than {PUBLICNAME_MAX_LEN} characters in length."
     if not (VALID_PUBLICNAME_RE.match(publicname)):
-        return "Public name must contain only lower-case letters, numbers, '.', '_' and '-'."
+        return (
+            "Public name must start with a lower-case letter or number, be between "
+            f"{PUBLICNAME_MIN_LEN} and {PUBLICNAME_MAX_LEN} characters in length, "
+            "and contain only lower-case letters, numbers, '_' and '-'."
+        )
     return ""
 
 
@@ -164,6 +167,9 @@ def transform_publicname(publicname):
         raise ValueError("Public name cannot be empty")
     publicname = publicname.lower()
     publicname = re.sub(VALID_PUBLICNAME_SUB, FILL_CHAR, publicname)
+    publicname = publicname.lstrip("-_")
+    if len(publicname) < PUBLICNAME_MIN_LEN:
+        publicname = publicname + FILL_CHAR * (PUBLICNAME_MIN_LEN - len(publicname))
     publicname = publicname[:PUBLICNAME_MAX_LEN]
     return publicname
 
