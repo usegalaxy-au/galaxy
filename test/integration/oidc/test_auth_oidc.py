@@ -447,6 +447,13 @@ class TestGalaxyOIDCLoginPSA(AbstractTestCases.BaseKeycloakIntegrationTestCase):
         config["oidc_backends_config_file"] = cls.backend_config_file
         # Use a debug auth pipeline that stores access token data in the user model
         config["oidc_auth_pipeline"] = DEBUG_AUTH_PIPELINE
+        config["enable_account_interface"] = False
+        config["enable_notification_system"] = True
+        # fixed_delegated_auth will be automatically computed as True when:
+        # - There is exactly one OIDC provider (keycloak)
+        # - There are no other authenticators configured
+        # Use empty auth_config_file to ensure no authenticators are loaded
+        config["auth_config_file"] = os.path.join(os.path.dirname(__file__), "auth_conf_empty.xml")
 
     def test_oidc_login_decode_access_token(self):
         _, response = self._login_via_keycloak(KEYCLOAK_TEST_USERNAME, KEYCLOAK_TEST_PASSWORD, save_cookies=True)
@@ -462,3 +469,297 @@ class TestGalaxyOIDCLoginPSA(AbstractTestCases.BaseKeycloakIntegrationTestCase):
         assert extra_data is not None
         assert "access_token_decoded" in extra_data
         assert "realm_access" in extra_data["access_token_decoded"]
+
+    def _get_profile_update_notifications(self):
+        response = self._get("notifications")
+        self._assert_status_code_is(response, 200)
+        notifications = response.json()
+        return [
+            n
+            for n in notifications
+            if n.get("source") == "oidc" and n.get("content", {}).get("subject") == "Profile updated"
+        ]
+
+    def test_fixed_delegated_auth_with_existing_user_auto_associates(self):
+        """
+        Test: fixed_delegated_auth=True, user NOT logged in, existing user with matching email
+        Expected: Auto-associate OIDC with existing user, redirect to root (not user/external_ids)
+
+        This matches custos lines 236-237, 268-269:
+        - if fixed_delegated_auth: user = existing_user
+        - redirect to login_redirect_url (root)
+        """
+        # Pre-create a Galaxy user with matching email and username
+        sa_session = self._app.model.session
+        user = model.User(email="gxyuser_fixed_auth@galaxy.org", username="gxyuser_fixed_auth")
+        user.set_password_cleartext("test123")
+        sa_session.add(user)
+        try:
+            sa_session.commit()
+        except Exception:
+            pass
+
+        # Login via OIDC without being logged into Galaxy first
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+
+        # Should auto-associate and redirect to root (not user/external_ids)
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path, "Should redirect to root, not user/external_ids"
+
+        # Should have notification about linking
+        notification = parse.parse_qs(parsed_url.query).get("notification", [""])[0]
+        assert "Your Keycloak identity has been linked" in notification
+
+        # Verify user is logged in and associated
+        response = self._get("users/current")
+        self._assert_status_code_is(response, 200)
+        assert response.json()["email"] == "gxyuser_fixed_auth@galaxy.org"
+        assert response.json()["username"] == "gxyuser_fixed_auth"
+        # Clear any existing profile notifications before checking the re-sync login behavior.
+        notifications = self._get_profile_update_notifications()
+        for notification in notifications:
+            self._delete(f"notifications/{notification['id']}")
+
+    def test_fixed_delegated_auth_with_new_user_creates_account(self):
+        """
+        Test: fixed_delegated_auth=True, user NOT logged in, NO existing user
+        Expected: Create new user, redirect to root
+
+        This matches custos lines 251-254, 268-269:
+        - Create user if no existing_user
+        - redirect to login_redirect_url (root)
+        """
+        # Login via OIDC with a new user (no pre-existing Galaxy account)
+        _, response = self._login_via_keycloak("gxyuser_brand_new", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+
+        # Should create user and redirect to root
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path, "Should redirect to root for fixed_delegated_auth"
+
+        # Verify user was created and logged in
+        response = self._get("users/current")
+        self._assert_status_code_is(response, 200)
+        assert response.json()["email"] == "gxyuser_brand_new@galaxy.org"
+
+    def test_fixed_delegated_auth_updates_profile_on_association(self):
+        """
+        Test: fixed_delegated_auth=True, existing user with matching email but different username
+        Expected: Username is updated from OIDC and notification is created
+        """
+        # Pre-create a Galaxy user with matching email but a different username
+        sa_session = self._app.model.session
+        user = model.User(email="gxyuser_fixed_auth@galaxy.org", username="stale_username")
+        user.set_password_cleartext("test123")
+        sa_session.add(user)
+        try:
+            sa_session.commit()
+        except Exception:
+            pass
+
+        # Login via OIDC without being logged into Galaxy first (association)
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path
+
+        # Verify user is logged in and username is updated to OIDC preferred username
+        response = self._get("users/current")
+        self._assert_status_code_is(response, 200)
+        assert response.json()["email"] == "gxyuser_fixed_auth@galaxy.org"
+        assert response.json()["username"] == "gxyuser_fixed_auth"
+
+        notifications = self._get_profile_update_notifications()
+        assert notifications, "Expected profile update notification"
+        message = notifications[0]["content"]["message"]
+        assert "public name" in message
+
+    def test_fixed_delegated_auth_updates_profile_on_repeat_login(self):
+        """
+        Test: fixed_delegated_auth=True, user associated, local username changes, next login re-syncs
+        Expected: Username is updated from OIDC and notification is created
+        """
+        # Pre-create a Galaxy user with matching email and username
+        sa_session = self._app.model.session
+        user = model.User(email="gxyuser_fixed_auth@galaxy.org", username="gxyuser_fixed_auth")
+        user.set_password_cleartext("test123")
+        sa_session.add(user)
+        try:
+            sa_session.commit()
+        except Exception:
+            pass
+
+        # First login to associate
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path
+
+        # Clear any existing profile notifications before checking the re-sync login behavior.
+        notifications = self._get_profile_update_notifications()
+        for notification in notifications:
+            self._delete(f"notifications/{notification['id']}")
+
+        # Clear any transactional state before mutating the user
+        sa_session.rollback()
+        user = sa_session.query(model.User).filter_by(email="gxyuser_fixed_auth@galaxy.org").one()
+
+        # Mutate local username after association
+        user.username = "stale_username"
+        sa_session.add(user)
+        sa_session.commit()
+
+        # Second login should re-sync username
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path
+
+        response = self._get("users/current")
+        self._assert_status_code_is(response, 200)
+        assert response.json()["username"] == "gxyuser_fixed_auth"
+
+        notifications = self._get_profile_update_notifications()
+        assert notifications, "Expected profile update notification"
+
+    def test_fixed_delegated_auth_profile_update_notification_once_per_change(self):
+        """
+        Test: fixed_delegated_auth=True, profile update notification is shown once per actual profile change.
+        Expected:
+        - Login with changed username -> one profile update notification
+        - Notification accepted (deleted), login again with no new change -> no new notification
+        - Local username changed again, login -> profile update notification appears again
+        """
+        sa_session = self._app.model.session
+        user = model.User(email="gxyuser_fixed_auth@galaxy.org", username="stale_username")
+        user.set_password_cleartext("test123")
+        sa_session.add(user)
+        try:
+            sa_session.commit()
+        except Exception:
+            pass
+
+        # First login applies username change from OIDC and creates one profile update notification.
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path
+
+        notifications = self._get_profile_update_notifications()
+        assert len(notifications) == 1
+        assert notifications[0]["content"]["message"].endswith("public name.")
+
+        # Accept/dismiss the message.
+        self._delete(f"notifications/{notifications[0]['id']}")
+        notifications = self._get_profile_update_notifications()
+        assert len(notifications) == 0
+
+        # Second login with no local changes should not create a new profile update notification.
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path
+        notifications = self._get_profile_update_notifications()
+        assert len(notifications) == 0
+
+        # Change local username again, then login should re-sync and generate the notification again.
+        sa_session.rollback()
+        user = sa_session.query(model.User).filter_by(email="gxyuser_fixed_auth@galaxy.org").one()
+        user.username = "stale_username_again"
+        sa_session.add(user)
+        sa_session.commit()
+
+        _, response = self._login_via_keycloak("gxyuser_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" not in parsed_url.path
+        notifications = self._get_profile_update_notifications()
+        assert len(notifications) == 1
+        assert notifications[0]["content"]["message"].endswith("public name.")
+
+
+class TestWithoutFixedDelegatedAuth(AbstractTestCases.BaseKeycloakIntegrationTestCase):
+    """
+    Integration tests for behavior WITHOUT fixed_delegated_auth (default).
+
+    This ensures we don't break the existing PSA behavior when fixed_delegated_auth=False.
+    """
+
+    provider_name = "keycloak"
+
+    @classmethod
+    def patch_oidc_config(cls):
+        psa_authnz_init = PSAAuthnz.__init__
+
+        def patched_psa_authnz_init(self, *args, **kwargs):
+            server_wrapper = cls._test_driver.server_wrappers[0]
+            psa_authnz_init(self, *args, **kwargs)
+            if self.config.get("provider") == cls.provider_name:
+                self.config["redirect_uri"] = (
+                    f"http://{server_wrapper.host}:{server_wrapper.port}/authnz/{cls.provider_name}/callback"
+                )
+
+        cls.config_patcher = patch("galaxy.authnz.psa_authnz.PSAAuthnz.__init__", patched_psa_authnz_init)
+        cls.config_patcher.start()
+
+    @classmethod
+    def handle_galaxy_oidc_config_kwds(cls, config):
+        config["enable_oidc"] = True
+        config["oidc_config_file"] = os.path.join(os.path.dirname(__file__), "oidc_config.xml")
+        config["oidc_backends_config_file"] = cls.backend_config_file
+        # To ensure fixed_delegated_auth=False, we configure an additional authenticator
+        # fixed_delegated_auth is computed as:
+        #   len(oidc_providers) == 1 AND len(other_authenticators) == 0
+        # By default, len(other_authenticators) > 1, so fixed_delegated_auth = True
+
+    def test_without_fixed_delegated_auth_prompts_for_login(self):
+        """
+        Test: fixed_delegated_auth=False, user NOT logged in, existing user with matching email
+        Expected: Redirect to login/start with connect_external_provider prompt
+
+        This matches custos lines 238-247:
+        - Show prompt to log in and link accounts
+        - Redirect to login/start?connect_external_provider=...
+        """
+        # Pre-create a Galaxy user
+        sa_session = self._app.model.session
+        user = model.User(email="gxyuser_no_fixed_auth@galaxy.org", username="no_fixed_auth_user")
+        user.set_password_cleartext("test123")
+        sa_session.add(user)
+        try:
+            sa_session.commit()
+        except Exception:
+            pass
+
+        # Try to login via OIDC without being logged into Galaxy
+        _, response = self._login_via_keycloak("gxyuser_no_fixed_auth", KEYCLOAK_TEST_PASSWORD, save_cookies=False)
+
+        # Should redirect to login/start with prompt
+        parsed_url = parse.urlparse(response.url)
+        assert "login/start" in parsed_url.path or "login/start" in response.url
+
+        # Should have connect_external_provider parameters
+        query_params = parse.parse_qs(parsed_url.query)
+        assert "connect_external_provider" in query_params
+        assert query_params["connect_external_provider"][0] == "keycloak"
+        assert "connect_external_email" in query_params
+        assert "gxyuser_no_fixed_auth@galaxy.org" in query_params["connect_external_email"][0]
+
+        # User should NOT be logged in
+        response = self._get("users/current")
+        assert "id" not in response.json()
+
+    def test_without_fixed_delegated_auth_redirects_to_external_ids(self):
+        """
+        Test: fixed_delegated_auth=False, new user created
+        Expected: Redirect to user/external_ids with notification
+
+        This matches custos lines 277-282:
+        - Default redirect to user/external_ids
+        """
+        # Login via OIDC with a new user
+        _, response = self._login_via_keycloak("gxyuser_new_no_fixed", KEYCLOAK_TEST_PASSWORD, save_cookies=True)
+
+        # Should redirect to user/external_ids
+        parsed_url = parse.urlparse(response.url)
+        assert "user/external_ids" in parsed_url.path or "user/external_ids" in response.url
+
+        # Should have notification
+        query_params = parse.parse_qs(parsed_url.query)
+        assert "notification" in query_params
+        notification = query_params["notification"][0]
+        assert "Your Keycloak identity has been linked" in notification
