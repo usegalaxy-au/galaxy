@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from urllib.parse import quote
 
 import jwt
 from jwt import InvalidTokenError
@@ -276,6 +277,49 @@ class PSAAuthnz(IdentityProvider):
         if isinstance(response, str):
             return True, "", response
         return response.get("success", False), response.get("message", ""), ""
+
+    def logout(self, trans, post_user_logout_href=None):
+        """
+        Logout from the identity provider.
+
+        For OIDC backends, constructs a logout URL using the end_session_endpoint.
+        For non-OIDC backends, returns the fallback URL.
+
+        :param trans: Galaxy transaction object
+        :param post_user_logout_href: URL to redirect to after logout
+        :return: Logout redirect URI
+        """
+        on_the_fly_config(trans.sa_session)
+        strategy = Strategy(trans.request, trans.session, Storage, self.config)
+        backend = self._load_backend(strategy, self.config["redirect_uri"])
+
+        # Only OIDC backends support IDP logout
+        if isinstance(backend, OpenIdConnectAuth):
+            try:
+                # Get end_session_endpoint from OIDC discovery document
+                oidc_config = backend.oidc_config()
+                end_session_endpoint = oidc_config.get("end_session_endpoint")
+
+                if end_session_endpoint:
+                    # Construct logout URL with optional redirect_uri
+                    if post_user_logout_href:
+                        logout_url = f"{end_session_endpoint}?redirect_uri={quote(post_user_logout_href)}"
+                    else:
+                        logout_url = end_session_endpoint
+
+                    return logout_url
+                else:
+                    # No end_session_endpoint available
+                    log.warning(f"No end_session_endpoint found for {self.config['provider']}")
+                    return post_user_logout_href or "/"
+
+            except Exception as e:
+                log.exception(f"Error getting logout URL for {self.config['provider']}: {e}")
+                return post_user_logout_href or "/"
+        else:
+            # Non-OIDC backends don't have IDP logout
+            log.debug(f"Backend {self.config['provider']} does not support IDP logout")
+            return post_user_logout_href or "/"
 
 
 class Strategy(BaseStrategy):
