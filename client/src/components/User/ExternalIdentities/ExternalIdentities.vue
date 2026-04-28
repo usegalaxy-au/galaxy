@@ -1,5 +1,5 @@
 <template>
-    <section class="external-id">
+    <section v-if="enable_account_interface" class="external-id">
         <b-alert :show="!!connectExternal" variant="info">
             You are logged in. You can now connect the Galaxy user account with the email <i>{{ userEmail }}</i
             >, to your preferred external provider.
@@ -121,6 +121,7 @@ export default {
             doomedItem: null,
             errorMessage: null,
             enable_oidc: galaxy.config.enable_oidc,
+            enable_account_interface: galaxy.config.enable_account_interface,
             userEmail: galaxy.user.get("email"),
         };
     },
