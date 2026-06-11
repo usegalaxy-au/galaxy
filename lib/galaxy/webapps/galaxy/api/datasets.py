@@ -22,6 +22,7 @@ from fastapi import (
     Request,
 )
 from starlette.responses import (
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
@@ -67,6 +68,7 @@ from galaxy.webapps.galaxy.services.datasets import (
     DatasetTextContentDetails,
     DeleteDatasetBatchPayload,
     DeleteDatasetBatchResult,
+    DirectDownloadUrl,
     RequestDataType,
     UpdateObjectStoreIdPayload,
 )
@@ -74,6 +76,14 @@ from galaxy.webapps.galaxy.services.datasets import (
 log = logging.getLogger(__name__)
 
 router = Router(tags=["datasets"])
+
+DIRECT_DOWNLOAD_REDIRECT_RESPONSE = {
+    "description": (
+        "Redirect to a URL serving the dataset directly from the backing object store. "
+        "Only returned for whole-file downloads when the dataset's object store has "
+        "`enable_direct_download` set."
+    ),
+}
 
 DatasetIDPathParam = Annotated[
     DecodedDatabaseIdField, Path(..., description="The encoded database identifier of the dataset.")
@@ -298,6 +308,7 @@ class FastAPIDatasets:
         summary="Displays (preview) or downloads dataset content.",
         tags=["histories"],
         response_class=StreamingResponse,
+        responses={302: DIRECT_DOWNLOAD_REDIRECT_RESPONSE},
     )
     @router.head(
         "/api/histories/{history_id}/contents/{history_content_id}/display",
@@ -325,6 +336,7 @@ class FastAPIDatasets:
         "/api/datasets/{history_content_id}/display",
         summary="Displays (preview) or downloads dataset content.",
         response_class=StreamingResponse,
+        responses={302: DIRECT_DOWNLOAD_REDIRECT_RESPONSE},
     )
     @router.head(
         "/api/datasets/{history_content_id}/display",
@@ -371,6 +383,8 @@ class FastAPIDatasets:
             ck_size=ck_size,
             **extra_params,
         )
+        if isinstance(display_data, DirectDownloadUrl):
+            return RedirectResponse(display_data.url, status_code=302, headers=headers)
         if isinstance(display_data, IOBase):
             file_name = getattr(display_data, "name", None)
             if file_name:

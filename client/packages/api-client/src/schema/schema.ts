@@ -9096,6 +9096,11 @@ export interface components {
             description?: string | null;
             /** Device */
             device?: string | null;
+            /**
+             * Enable Direct Download
+             * @default false
+             */
+            enable_direct_download: boolean;
             /** Name */
             name?: string | null;
             /** Object Expires After Days */
