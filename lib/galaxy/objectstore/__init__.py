@@ -1842,7 +1842,7 @@ class ConcreteObjectStoreModel(BaseModel):
     quota: QuotaModel
     badges: List[BadgeDict]
     device: Optional[str] = None
-    enable_direct_download: bool = False
+    enable_direct_download: Optional[bool] = None
     object_expires_after_days: Optional[int] = None
 
 
