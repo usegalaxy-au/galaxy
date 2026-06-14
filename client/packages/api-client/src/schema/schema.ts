@@ -25252,6 +25252,11 @@ export interface components {
             description?: string | null;
             /** Device */
             device?: string | null;
+            /**
+             * Enable Direct Download
+             * @default false
+             */
+            enable_direct_download: boolean;
             /** Hidden */
             hidden: boolean;
             /** Name */
@@ -33615,6 +33620,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Redirect to a URL serving the dataset directly from the backing object store. Only returned for whole-file downloads when the dataset's object store has `enable_direct_download` set. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Request Error */
             "4XX": {
                 headers: {
@@ -38755,6 +38767,13 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Redirect to a URL serving the dataset directly from the backing object store. Only returned for whole-file downloads when the dataset's object store has `enable_direct_download` set. */
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
