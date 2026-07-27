@@ -5,7 +5,6 @@ import time
 from functools import partial
 from typing import (
     Any,
-    Optional,
 )
 
 import anyio
@@ -127,11 +126,9 @@ class AgentAPI:
     async def analyze_error(
         self,
         query: str = Body(..., description="Description of the error or problem"),
-        job_id: Optional[DecodedDatabaseIdField] = Body(None, description="Job ID for context"),
-        error_details: Optional[dict[str, Any]] = Body(None, description="Additional error details"),
-        save_exchange: Optional[bool] = Body(
-            None, description="Save exchange for feedback tracking. Defaults to false."
-        ),
+        job_id: DecodedDatabaseIdField | None = Body(None, description="Job ID for context"),
+        error_details: dict[str, Any] | None = Body(None, description="Additional error details"),
+        save_exchange: bool | None = Body(None, description="Save exchange for feedback tracking. Defaults to false."),
         trans: ProvidesUserContext = DependsOnTrans,
         user: User = DependsOnUser,
     ) -> AgentResponse:
@@ -182,10 +179,8 @@ class AgentAPI:
     async def create_custom_tool(
         self,
         query: str = Body(..., description="Description of the tool to create"),
-        context: Optional[dict[str, Any]] = Body(None, description="Additional context for tool creation"),
-        save_exchange: Optional[bool] = Body(
-            None, description="Save exchange for feedback tracking. Defaults to false."
-        ),
+        context: dict[str, Any] | None = Body(None, description="Additional context for tool creation"),
+        save_exchange: bool | None = Body(None, description="Save exchange for feedback tracking. Defaults to false."),
         trans: ProvidesUserContext = DependsOnTrans,
         user: User = DependsOnUser,
     ) -> AgentResponse:
@@ -216,6 +211,57 @@ class AgentAPI:
         except Exception as e:
             log.exception(f"Error in custom tool creation: {e}")
             raise ConfigurationError(f"Custom tool creation failed: {str(e)}")
+
+    @router.post("/api/ai/agents/history-summary", unstable=True)
+    async def history_summary(
+        self,
+        history_id: str = Body(..., embed=True, description="Encoded id of the history to summarize."),
+        trans: ProvidesUserContext = DependsOnTrans,
+        user: User = DependsOnUser,
+    ) -> AgentResponse:
+        """Produce a comprehensive markdown report for a history's analysis.
+
+        The history agent fetches the full lineage via ``get_history_graph``
+        and synthesizes a multi-section report (Summary, Data Inputs,
+        Analysis Pipeline, Tools and Parameters, Outputs, Notes). Suitable
+        for inclusion in a history notebook or methods section.
+        """
+        query = (
+            f"Generate a comprehensive analysis report for Galaxy history {history_id}.\n\n"
+            f"Call get_history_graph(history_id='{history_id}') with no seed for the "
+            "full history overview. If the response's truncated.item_count_capped is "
+            "true, note that in the Notes section.\n\n"
+            "Produce a markdown report with these sections (use ## headings):\n\n"
+            "## Summary\n"
+            "Two or three sentences: what kind of analysis, key inputs/outputs, key tools.\n\n"
+            "## Data Inputs\n"
+            "List input files and collections with their formats.\n\n"
+            "## Analysis Pipeline\n"
+            "Narrative description of the processing steps in past tense, scientific style.\n\n"
+            "## Tools and Parameters\n"
+            "For each tool: name, version when known, what it does in this workflow, "
+            "and any key parameters or settings.\n\n"
+            "## Outputs\n"
+            "Final output files and collections with formats.\n\n"
+            "## Notes\n"
+            "Observations: caveats, truncation, anything notable. Omit if nothing to add.\n\n"
+            "Style rules:\n"
+            "- Past tense, third person, scientific.\n"
+            "- Include tool versions only when available; omit placeholder text otherwise.\n"
+            "- Exclude internal Galaxy tools (__DATA_FETCH__, __SET_METADATA__, etc.).\n"
+            "- Do not hallucinate tool names, parameters, or versions."
+        )
+        try:
+            return await self.agent_service.execute_agent(
+                agent_type="history",
+                query=query,
+                trans=trans,
+                user=user,
+                context={"history_id": history_id},
+            )
+        except Exception as e:
+            log.exception(f"Error in history summary: {e}")
+            raise ConfigurationError(f"History summary failed: {str(e)}")
 
     def _get_agent_specialties(self, agent_type: str) -> list:
         """Get specialties for an agent type."""

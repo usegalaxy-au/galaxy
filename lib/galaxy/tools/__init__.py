@@ -21,7 +21,6 @@ from typing import (
     NamedTuple,
     Optional,
     TYPE_CHECKING,
-    Union,
 )
 from urllib.parse import unquote_plus
 from uuid import UUID
@@ -120,6 +119,10 @@ from galaxy.tool_util.toolbox import (
     ToolLoadConfigurationConflict,
     ToolLoadError,
     ToolSection,
+)
+from galaxy.tool_util.toolbox.entry import (
+    ToolPanelEntry,
+    ToolShedRepositoryInfo,
 )
 from galaxy.tool_util.toolbox.views.sources import StaticToolBoxViewSources
 from galaxy.tool_util.verify.interactor import ToolTestDescription
@@ -398,7 +401,7 @@ class RawToolSource(NamedTuple):
     tool_source_class: str
 
 
-def get_safe_version(tool: "Tool", requested_tool_version: str) -> Optional[str]:
+def get_safe_version(tool: "Tool", requested_tool_version: str) -> str | None:
     if tool.id:
         safe_version = WORKFLOW_SAFE_TOOL_VERSION_UPDATES.get(tool.id)
         if (
@@ -417,9 +420,9 @@ class ToolNotFoundException(Exception):
     pass
 
 
-def create_tool_from_source(app, tool_source: ToolSource, config_file: Optional[StrPath] = None, **kwds):
+def create_tool_from_source(app, tool_source: ToolSource, config_file: StrPath | None = None, **kwds):
     # Allow specifying a different tool subclass to instantiate
-    ToolClass: Optional[type[Tool]] = None
+    ToolClass: type[Tool] | None = None
     if tool_source.parse_class() == "GalaxyUserTool":
         ToolClass = UserDefinedTool
     elif (tool_module := tool_source.parse_tool_module()) is not None:
@@ -445,9 +448,9 @@ def create_tool_from_source(app, tool_source: ToolSource, config_file: Optional[
 def create_tool_from_representation(
     app,
     raw_tool_source: str,
-    tool_dir: Optional[StrPath] = None,
+    tool_dir: StrPath | None = None,
     tool_source_class="XmlToolSource",
-    guid: Optional[str] = None,
+    guid: str | None = None,
 ) -> "Tool":
     tool_source = get_tool_source(tool_source_class=tool_source_class, raw_tool_source=raw_tool_source)
     return create_tool_from_source(app, tool_source=tool_source, tool_dir=tool_dir, guid=guid)
@@ -626,11 +629,11 @@ class ToolBox(AbstractToolBox):
     def _create_tool_from_source(self, tool_source: ToolSource, **kwds):
         return create_tool_from_source(self.app, tool_source, **kwds)
 
-    def get_unprivileged_tool(self, user: model.User, tool_uuid: Union[UUID, str]) -> Optional["Tool"]:
+    def get_unprivileged_tool(self, user: model.User, tool_uuid: UUID | str) -> Optional["Tool"]:
         dynamic_tool = self.app.dynamic_tool_manager.get_unprivileged_tool_by_uuid(user, tool_uuid)
         return self.dynamic_tool_to_tool(dynamic_tool)
 
-    def get_unprivileged_tool_or_none(self, user: model.User, tool_uuid: Union[UUID, str]) -> Optional["Tool"]:
+    def get_unprivileged_tool_or_none(self, user: model.User, tool_uuid: UUID | str) -> Optional["Tool"]:
         try:
             return self.get_unprivileged_tool(user, tool_uuid=tool_uuid)
         except exceptions.InsufficientPermissionsException:
@@ -667,8 +670,8 @@ class ToolBox(AbstractToolBox):
         job: model.Job,
         exact=True,
         check_access=True,
-        user: Optional[model.User] = None,
-        tool_version: Optional[str] = None,
+        user: model.User | None = None,
+        tool_version: str | None = None,
     ) -> Optional["Tool"]:
         if (dynamic_tool := job.dynamic_tool) is not None:
             if check_access and not dynamic_tool.public:
@@ -697,7 +700,7 @@ class ToolBox(AbstractToolBox):
         }
 
     def _get_tool_shed_repository(
-        self, tool_shed: str, name: str, owner: str, installed_changeset_revision: Optional[str]
+        self, tool_shed: str, name: str, owner: str, installed_changeset_revision: str | None
     ) -> "ToolShedRepository":
         # Abstract toolbox doesn't have a dependency on the database, so
         # override _get_tool_shed_repository here to provide this information.
@@ -808,7 +811,7 @@ class JobContext(BaseJobContext):
         input_dbkey,
         object_store: "ObjectStore",
         final_job_state: "JobState",
-        max_discovered_files: Optional[int],
+        max_discovered_files: int | None,
         flush_per_n_datasets=None,
     ):
         self.tool = tool
@@ -858,7 +861,7 @@ class JobContext(BaseJobContext):
         return self._job
 
     @property
-    def flush_per_n_datasets(self) -> Optional[int]:
+    def flush_per_n_datasets(self) -> int | None:
         return self._flush_per_n_datasets
 
     @property
@@ -995,15 +998,15 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
 
     def __init__(
         self,
-        config_file: Optional[StrPath],
+        config_file: StrPath | None,
         tool_source: ToolSource,
         app: "UniverseApplication",
-        guid: Optional[str] = None,
+        guid: str | None = None,
         repository_id=None,
         tool_shed_repository=None,
         allow_code_files: bool = True,
         dynamic: bool = False,
-        tool_dir: Optional[StrPath] = None,
+        tool_dir: StrPath | None = None,
     ):
         """Load a tool from the config named by `config_file`"""
         self.config_file = os.path.realpath(config_file) if config_file else None
@@ -1020,8 +1023,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.stdio_regexes: list = []
         self.inputs_by_page: list[dict] = []
         self.display_by_page: list = []
-        self.action: Union[str, tuple[str, str]] = "/tool_runner/index"
-        self.target = "galaxy_main"
+        self.action: str | tuple[str, str] = "/tool_runner/index"
         self.method = "post"
         self.labels: list = []
         self.check_values = True
@@ -1031,11 +1033,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.require_login = False
         self.rerun = False
         # This will be non-None for tools loaded from the database (DynamicTool objects).
-        self.dynamic_tool: Optional[DynamicTool] = None
+        self.dynamic_tool: DynamicTool | None = None
         # Primitives snapshotted from DynamicTool so allow_user_access never
         # touches a possibly-detached ORM row.
-        self.dynamic_tool_id: Optional[int] = None
-        self.dynamic_tool_uuid: Optional[UUID] = None
+        self.dynamic_tool_id: int | None = None
+        self.dynamic_tool_uuid: UUID | None = None
         self.is_unprivileged_tool: bool = False
         self.dynamic_tool_active: bool = True
         # Define a place to keep track of all input   These
@@ -1046,38 +1048,38 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         # tool_data_table_conf.xml entries exist.
         self.input_params: list[ToolParameter] = []
         # Attributes of tools installed from Galaxy tool sheds.
-        self.tool_shed: Optional[str] = None
-        self.repository_name: Optional[str] = None
-        self.repository_owner: Optional[str] = None
-        self.changeset_revision: Optional[str] = None
-        self.installed_changeset_revision: Optional[str] = None
-        self.sharable_url: Optional[str] = None
+        self.tool_shed: str | None = None
+        self.repository_name: str | None = None
+        self.repository_owner: str | None = None
+        self.changeset_revision: str | None = None
+        self.installed_changeset_revision: str | None = None
+        self.sharable_url: str | None = None
         self.npages = 0
         # The tool.id value will be the value of guid, but we'll keep the
         # guid attribute since it is useful to have.
         self.guid = guid
-        self.old_id: Optional[str] = None
-        self.python_template_version: Optional[Version] = None
-        self._lineage: Optional[ToolLineage] = None
+        self.old_id: str | None = None
+        self.python_template_version: Version | None = None
+        self._lineage: ToolLineage | None = None
         self.dependencies: list = []
         # populate toolshed repository info, if available
         self.populate_tool_shed_info(tool_shed_repository)
         # add tool resource parameters
         self.populate_resource_parameters(tool_source)
-        self.tool_errors: Optional[str] = None
+        self.tool_errors: str | None = None
         # Parse XML element containing configuration
         self.tool_source = tool_source
         self.outputs: dict[str, ToolOutputBase] = {}
         self.output_collections: dict[str, ToolOutputCollection] = {}
-        self.command: Optional[str] = None
-        self.base_command: Optional[list[str]] = None
-        self.arguments: Optional[list[str]] = []
-        self.shell_command: Optional[str] = None
-        self.javascript_requirements: Optional[list[JavascriptRequirement]] = None
-        self.credentials: Optional[list[CredentialsRequirement]] = None
+        self.command: str | None = None
+        self.base_command: list[str] | None = None
+        self.arguments: list[str] | None = []
+        self.shell_command: str | None = None
+        self.javascript_requirements: list[JavascriptRequirement] | None = None
+        self.credentials: list[CredentialsRequirement] | None = None
         self._is_workflow_compatible = None
-        self.__tests: Optional[str] = None
-        self.parameters: Optional[list[ToolParameterT]] = None
+        self.__tests: str | None = None
+        self.parameters: list[ToolParameterT] | None = None
         self.template_macro_params: dict = {}
         self._macro_paths: list = []
         self.ports: list = []
@@ -1234,7 +1236,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             )
             return legacy_tool
 
-    def __get_job_tool_configuration(self, job_params: Union[dict, None] = None) -> "JobToolConfiguration":
+    def __get_job_tool_configuration(self, job_params: dict | None = None) -> "JobToolConfiguration":
         """Generalized method for getting this tool's job configuration.
 
         :type job_params: dict or None
@@ -1267,7 +1269,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         ), f"Could not get a job tool configuration for Tool {self.id} with job_params {job_params}, this is a bug"
         return rval
 
-    def get_configured_job_handler(self) -> Union[str, None]:
+    def get_configured_job_handler(self) -> str | None:
         """Get the configured job handler for this `Tool`.
 
         Unlike the former ``get_job_handler()`` method, this does not perform "preassignment" (random selection of
@@ -1277,13 +1279,13 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         """
         return self.__get_job_tool_configuration().handler
 
-    def get_job_destination(self, job_params: Union[dict, None] = None) -> "JobDestination":
+    def get_job_destination(self, job_params: dict | None = None) -> "JobDestination":
         """
         :returns: The destination definition and runner parameters.
         """
         return self.app.job_config.get_destination(self.__get_job_tool_configuration(job_params=job_params).destination)
 
-    def get_panel_section(self) -> Union[tuple[str, str], tuple[None, None]]:
+    def get_panel_section(self) -> tuple[str, str] | tuple[None, None]:
         return self.app.toolbox.get_section_for_tool(self)
 
     def allow_user_access(self, user, attempting_access: bool = True) -> bool:
@@ -1302,7 +1304,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             return False
         return owned is not None
 
-    def parse(self, tool_source: ToolSource, guid: Optional[str] = None, dynamic: bool = False) -> None:
+    def parse(self, tool_source: ToolSource, guid: str | None = None, dynamic: bool = False) -> None:
         """
         Read tool configuration from the element `root` and fill in `self`.
         """
@@ -1544,7 +1546,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     def __parse_legacy_features(self, tool_source: ToolSource):
         self.code_namespace: dict[str, Any] = {}
         self.hook_map: dict[str, str] = {}
-        self.uihints: dict[str, str] = {}
 
         if not hasattr(tool_source, "root"):
             return
@@ -1583,13 +1584,8 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                     else:
                         raise
 
-        # User interface hints
-        if (uihints_elem := root.find("uihints")) is not None:
-            for key, value in uihints_elem.attrib.items():
-                self.uihints[key] = value
-
     def __parse_config_files(self, tool_source: ToolSource):
-        self.config_files: Sequence[Union[TemplateConfigFile, InputConfigFile, FileSourceConfigFile]] = []
+        self.config_files: Sequence[TemplateConfigFile | InputConfigFile | FileSourceConfigFile] = []
 
         self.config_files.extend(tool_source.parse_input_configfiles())
         self.config_files.extend(tool_source.parse_template_configfiles())
@@ -1605,7 +1601,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                 log.exception("Failed to parse tool tests for tool '%s'", self.id)
 
     @property
-    def tests(self):
+    def tests(self) -> list[ToolTestDescription] | None:
         if self.__tests:
             return [ToolTestDescription(d) for d in json.loads(self.__tests)]
         return None
@@ -1613,7 +1609,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     @property
     def _repository_dir(self):
         """If tool shed installed tool, the base directory of the repository installed."""
-        if getattr(self, "tool_shed", None):
+        if self.tool_shed:
             assert self.tool_dir is not None
             tool_dir = Path(self.tool_dir)
             for repo_dir in itertools.chain([tool_dir], tool_dir.parents):
@@ -1725,7 +1721,6 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
                         f"{self.app.config.nginx_upload_path}?nginx_redir=",
                         unquote_plus(self.action),
                     )
-                self.target = input_elem.get("target", self.target)
                 self.method = input_elem.get("method", self.method)
                 # Parse the actual parameters
                 # Handle multiple page case
@@ -2002,14 +1997,14 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         return help_html
 
     @property
-    def biotools_reference(self) -> Optional[str]:
+    def biotools_reference(self) -> str | None:
         """Return a bio.tools ID if external reference to it is found.
 
         If multiple bio.tools references are found, return just the first one.
         """
         return biotools_reference(self.xrefs)
 
-    def __get_help_with_images(self, help_content: Optional[HelpContent]) -> Optional[HelpContent]:
+    def __get_help_with_images(self, help_content: HelpContent | None) -> HelpContent | None:
         if help_content and help_content.format == "restructuredtext":
             help_text = help_content.content or ""
             try:
@@ -2114,11 +2109,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self,
         request_context: WorkRequestContext,
         tool_request_internal_state: RequestInternalDereferencedToolState,
-        rerun_remap_job_id: Optional[int],
+        rerun_remap_job_id: int | None,
     ) -> tuple[
         list[ToolStateJobInstancePopulatedT],
         list[ParameterValidationErrorsT],
-        Optional[MatchingCollections],
+        MatchingCollections | None,
         list[JobInternalToolState],
     ]:
         """The tool request API+tasks version of expand_incoming.
@@ -2135,7 +2130,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
 
         expanded_incomings: list[ToolStateJobInstanceExpansionT]
         job_tool_states: list[ToolStateJobInstanceT]
-        collection_info: Optional[MatchingCollections]
+        collection_info: MatchingCollections | None
         expanded_incomings, job_tool_states, collection_info = expand_meta_parameters_async(
             request_context.app, self, tool_request_internal_state
         )
@@ -2176,15 +2171,15 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     ) -> tuple[
         list[ToolStateJobInstancePopulatedT],
         list[ParameterValidationErrorsT],
-        Optional[int],
-        Optional[MatchingCollections],
+        int | None,
+        MatchingCollections | None,
     ]:
         rerun_remap_job_id = _rerun_remap_job_id(request_context, incoming, self.id)
         set_dataset_matcher_factory(request_context, self)
         # Fixed set of input parameters may correspond to any number of jobs.
         # Expand these out to individual parameters for given jobs (tool executions).
         expanded_incomings: list[ToolStateJobInstanceExpansionT]
-        collection_info: Optional[MatchingCollections]
+        collection_info: MatchingCollections | None
         expanded_incomings, collection_info = expand_meta_parameters(
             request_context, self, incoming, input_format=input_format
         )
@@ -2210,8 +2205,8 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
 
     def _ensure_expansion_is_valid(
         self,
-        expanded_incomings: Union[list[JobInternalToolState], list[ToolStateJobInstanceT]],
-        rerun_remap_job_id: Optional[int],
+        expanded_incomings: list[JobInternalToolState] | list[ToolStateJobInstanceT],
+        rerun_remap_job_id: int | None,
     ) -> None:
         """If the request corresponds to multiple jobs but this doesn't work with request configuration - raise an error.
 
@@ -2303,8 +2298,8 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         trans,
         use_cached_job: bool,
         all_params: list[ToolStateJobInstancePopulatedT],
-    ) -> dict[int, Optional[Job]]:
-        completed_jobs: dict[int, Optional[Job]] = {}
+    ) -> dict[int, Job | None]:
+        completed_jobs: dict[int, Job | None] = {}
         for i, param in enumerate(all_params):
             if use_cached_job and trans.user:
                 tool_id = self.id
@@ -2328,11 +2323,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         request_context: WorkRequestContext,
         tool_request: ToolRequest,
         tool_state: RequestInternalDereferencedToolState,
-        history: Optional[model.History] = None,
+        history: model.History | None = None,
         use_cached_job: bool = DEFAULT_USE_CACHED_JOB,
-        preferred_object_store_id: Optional[str] = DEFAULT_PREFERRED_OBJECT_STORE_ID,
-        rerun_remap_job_id: Optional[int] = None,
-        credentials_context: Optional[CredentialsContext] = None,
+        preferred_object_store_id: str | None = DEFAULT_PREFERRED_OBJECT_STORE_ID,
+        rerun_remap_job_id: int | None = None,
+        credentials_context: CredentialsContext | None = None,
         input_format: str = "legacy",
     ):
         """The tool request API+tasks version of handle_input."""
@@ -2342,9 +2337,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self.handle_incoming_errors(all_errors)
 
         mapping_params = MappingParameters(tool_request.request, all_params, tool_state, job_tool_states)
-        completed_jobs: dict[int, Optional[model.Job]] = self.completed_jobs(
-            request_context, use_cached_job, all_params
-        )
+        completed_jobs: dict[int, model.Job | None] = self.completed_jobs(request_context, use_cached_job, all_params)
         return execute_async(
             request_context,
             self,
@@ -2362,12 +2355,12 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self,
         trans,
         incoming: ToolRequestT,
-        history: Optional[History] = None,
+        history: History | None = None,
         use_cached_job: bool = DEFAULT_USE_CACHED_JOB,
-        preferred_object_store_id: Optional[str] = DEFAULT_PREFERRED_OBJECT_STORE_ID,
-        credentials_context: Optional[CredentialsContext] = None,
+        preferred_object_store_id: str | None = DEFAULT_PREFERRED_OBJECT_STORE_ID,
+        credentials_context: CredentialsContext | None = None,
         input_format: InputFormatT = "legacy",
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         send_email_notification: bool = False,
     ):
         """
@@ -2387,7 +2380,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         mapping_params = MappingParameters(incoming, all_params, None, None)
         if use_cached_job:
             mapping_params.param_template["__use_cached_job__"] = use_cached_job
-        completed_jobs: dict[int, Optional[Job]] = self.completed_jobs(trans, use_cached_job, all_params)
+        completed_jobs: dict[int, Job | None] = self.completed_jobs(trans, use_cached_job, all_params)
         execution_tracker = execute_sync(
             trans,
             self,
@@ -2450,15 +2443,15 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     def handle_single_execution(
         self,
         trans,
-        rerun_remap_job_id: Optional[int],
+        rerun_remap_job_id: int | None,
         execution_slice: ExecutionSlice,
         history: History,
         execution_cache: ToolExecutionCache,
-        completed_job: Optional[Job],
-        collection_info: Optional[MatchingCollections],
-        job_callback: Optional[JobCallbackT],
-        preferred_object_store_id: Optional[str],
-        credentials_context: Optional[CredentialsContext],
+        completed_job: Job | None,
+        collection_info: MatchingCollections | None,
+        job_callback: JobCallbackT | None,
+        preferred_object_store_id: str | None,
+        credentials_context: CredentialsContext | None,
         flush_job: bool,
         skip: bool,
     ):
@@ -2559,11 +2552,11 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     def execute(
         self,
         trans,
-        incoming: Optional[ToolStateJobInstancePopulatedT] = None,
-        history: Optional[History] = None,
+        incoming: ToolStateJobInstancePopulatedT | None = None,
+        history: History | None = None,
         set_output_hid: bool = DEFAULT_SET_OUTPUT_HID,
         flush_job: bool = True,
-        completed_job: Optional[Job] = None,
+        completed_job: Job | None = None,
     ):
         """
         Execute the tool using parameter values in `incoming`. This just
@@ -2587,17 +2580,17 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     def _execute(
         self,
         trans,
-        incoming: Optional[ToolStateJobInstancePopulatedT] = None,
-        validated_parameters: Optional[JobInternalToolState] = None,
-        history: Optional[History] = None,
-        rerun_remap_job_id: Optional[int] = DEFAULT_RERUN_REMAP_JOB_ID,
-        execution_cache: Optional[ToolExecutionCache] = None,
-        dataset_collection_elements: Optional[DatasetCollectionElementsSliceT] = None,
-        completed_job: Optional[Job] = None,
-        collection_info: Optional[MatchingCollections] = None,
-        job_callback: Optional[JobCallbackT] = DEFAULT_JOB_CALLBACK,
-        preferred_object_store_id: Optional[str] = DEFAULT_PREFERRED_OBJECT_STORE_ID,
-        credentials_context: Optional[CredentialsContext] = None,
+        incoming: ToolStateJobInstancePopulatedT | None = None,
+        validated_parameters: JobInternalToolState | None = None,
+        history: History | None = None,
+        rerun_remap_job_id: int | None = DEFAULT_RERUN_REMAP_JOB_ID,
+        execution_cache: ToolExecutionCache | None = None,
+        dataset_collection_elements: DatasetCollectionElementsSliceT | None = None,
+        completed_job: Job | None = None,
+        collection_info: MatchingCollections | None = None,
+        job_callback: JobCallbackT | None = DEFAULT_JOB_CALLBACK,
+        preferred_object_store_id: str | None = DEFAULT_PREFERRED_OBJECT_STORE_ID,
+        credentials_context: CredentialsContext | None = None,
         set_output_hid: bool = DEFAULT_SET_OUTPUT_HID,
         flush_job: bool = True,
         skip: bool = False,
@@ -2806,7 +2799,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
     def exec_before_job(self, app, inp_data: InpDataDictT, out_data: OutDataDictT, param_dict=None):
         pass
 
-    def exec_after_process(self, app, inp_data, out_data, param_dict, job, final_job_state: Optional[str] = None):
+    def exec_after_process(self, app, inp_data, out_data, param_dict, job, final_job_state: str | None = None):
         pass
 
     def job_failed(self, job_wrapper, message, exception=False):
@@ -2969,62 +2962,59 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             os.remove(temp_file)
         return tarball_archive
 
-    def to_dict(self, trans, link_details=False, io_details=False, tool_help=False):
-        """Returns dict of tool."""
-
-        # Basic information
-        tool_dict = self._dictify_view_keys()
-
-        tool_dict["icon"] = self.icon
-        tool_dict["edam_operations"] = self.edam_operations
-        tool_dict["edam_topics"] = self.edam_topics
-        tool_dict["hidden"] = self.hidden
-        tool_dict["is_workflow_compatible"] = self.is_workflow_compatible
-        tool_dict["xrefs"] = self.xrefs
-        tool_dict["versions"] = self.tool_versions
-        tool_dict["hidden_versions"] = self.hidden_tool_versions
-
+    def to_panel_entry(self, trans) -> dict[str, Any]:
+        """The complete per-tool panel/listing payload — see
+        :class:`galaxy.tool_util.toolbox.entry.ToolPanelEntry` for the
+        contract. ``to_dict`` layers io/help extras on top of this.
+        """
+        panel_section_id, panel_section_name = self.get_panel_section()
+        # FIXME: the Tool class should declare directly, instead of ad hoc inspection
+        regular_form = self.__class__ == Tool or isinstance(self, (DatabaseOperationTool, InteractiveTool))
+        if isinstance(self, DataSourceTool):
+            link = self.app.url_for(controller="tool_runner", action="data_source_redirect", tool_id=self.id)
+        else:
+            link = self.app.url_for(controller="tool_runner", tool_id=self.id)
+        kwargs: dict[str, Any] = self._dictify_view_keys()
+        kwargs.update(
+            icon=self.icon,
+            edam_operations=self.edam_operations,
+            edam_topics=self.edam_topics,
+            hidden=self.hidden,
+            is_workflow_compatible=self.is_workflow_compatible,
+            xrefs=self.xrefs,
+            versions=self.tool_versions,
+            hidden_versions=self.hidden_tool_versions,
+            link=link,
+            has_parameters=self.parameters is not None,
+            panel_section_id=panel_section_id,
+            panel_section_name=panel_section_name,
+            form_style="regular" if regular_form else "special",
+        )
         if self.dynamic_tool:
-            tool_dict["uuid"] = str(self.dynamic_tool.uuid)
-
-        # Fill in ToolShedRepository info
-        if hasattr(self, "tool_shed") and self.tool_shed:
-            tool_dict["tool_shed_repository"] = {
-                "name": self.repository_name,
-                "owner": self.repository_owner,
-                "changeset_revision": self.changeset_revision,
-                "tool_shed": self.tool_shed,
-            }
-
-        # If an admin user, expose the path to the actual tool config XML file.
+            kwargs["uuid"] = str(self.dynamic_tool.uuid)
+        if getattr(self, "tool_shed", None):
+            kwargs["tool_shed_repository"] = ToolShedRepositoryInfo(
+                name=self.repository_name,
+                owner=self.repository_owner,
+                changeset_revision=self.changeset_revision,
+                tool_shed=self.tool_shed,
+            )
         if trans.user_is_admin:
-            config_file = None if not self.config_file else os.path.abspath(self.config_file)
-            tool_dict["config_file"] = config_file
+            kwargs["config_file"] = None if not self.config_file else os.path.abspath(self.config_file)
+        return ToolPanelEntry(**kwargs).model_dump(exclude_unset=True)
 
-        # Add link details.
-        if link_details:
-            # Add details for creating a hyperlink to the tool.
-            if not isinstance(self, DataSourceTool):
-                link = self.app.url_for(controller="tool_runner", tool_id=self.id)
-            else:
-                link = self.app.url_for(controller="tool_runner", action="data_source_redirect", tool_id=self.id)
+    def to_dict(self, trans, link_details=False, io_details=False, tool_help=False):
+        """Returns dict of tool.
 
-            # Basic information
-            tool_dict.update({"link": link, "min_width": self.uihints.get("minwidth", -1), "target": self.target})
+        ``link_details`` is accepted for backwards compatibility and no
+        longer gates any field.
+        """
+        tool_dict = self.to_panel_entry(trans)
 
         # Add input and output details.
         if io_details:
             tool_dict["inputs"] = [input.to_dict(trans) for input in self.inputs.values()]
             tool_dict["outputs"] = [output.to_dict(app=self.app) for output in self.outputs.values()]
-
-        tool_dict["has_parameters"] = self.parameters is not None
-
-        tool_dict["panel_section_id"], tool_dict["panel_section_name"] = self.get_panel_section()
-
-        tool_class = self.__class__
-        # FIXME: the Tool class should declare directly, instead of ad hoc inspection
-        regular_form = tool_class == Tool or isinstance(self, (DatabaseOperationTool, InteractiveTool))
-        tool_dict["form_style"] = "regular" if regular_form else "special"
         if tool_help:
             # create tool help
             help_txt = ""
@@ -3046,10 +3036,10 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         self,
         trans,
         kwd=None,
-        job: Optional[Job] = None,
+        job: Job | None = None,
         workflow_building_mode=False,
-        history: Optional[History] = None,
-        options_pagination: Optional[OptionsPaginationT] = None,
+        history: History | None = None,
+        options_pagination: OptionsPaginationT | None = None,
     ):
         """
         Recursively creates a tool dictionary containing repeats, dynamic options and updated states.
@@ -3176,7 +3166,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         state_inputs,
         group_inputs,
         other_values=None,
-        options_pagination: Optional[OptionsPaginationT] = None,
+        options_pagination: OptionsPaginationT | None = None,
     ):
         """
         Populates the tool model consumed by the client form builder.
@@ -3198,13 +3188,13 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         assert history
 
         # Create index for hdas.
-        hda_source_dict: dict[Union[int, str], HistoryDatasetAssociation] = {}
+        hda_source_dict: dict[int | str, HistoryDatasetAssociation] = {}
         for hda in history.datasets:
             key = f"{hda.hid}_{hda.dataset.id}"
             hda_source_dict[hda.dataset.id] = hda_source_dict[key] = hda
 
         # Ditto for dataset collections.
-        hdca_source_dict: dict[Union[int, str], HistoryDatasetCollectionAssociation] = {}
+        hdca_source_dict: dict[int | str, HistoryDatasetCollectionAssociation] = {}
         for hdca in history.dataset_collections:
             key = f"{hdca.hid}_{hdca.collection.id}"
             hdca_source_dict[hdca.collection.id] = hdca_source_dict[key] = hdca
@@ -3214,10 +3204,9 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
             if isinstance(value, HistoryDatasetAssociation):
                 assert value.dataset is not None
                 id = value.dataset.id
-                source: Union[
-                    dict[Union[int, str], HistoryDatasetAssociation],
-                    dict[Union[int, str], HistoryDatasetCollectionAssociation],
-                ] = hda_source_dict
+                source: (
+                    dict[int | str, HistoryDatasetAssociation] | dict[int | str, HistoryDatasetCollectionAssociation]
+                ) = hda_source_dict
             elif isinstance(value, HistoryDatasetCollectionAssociation):
                 id = value.collection.id
                 source = hdca_source_dict
@@ -3392,7 +3381,7 @@ class ExpressionTool(Tool):
     tool_type_local = True
     EXPRESSION_INPUTS_NAME = "_expression_inputs_.json"
 
-    def parse(self, tool_source: ToolSource, guid: Optional[str] = None, dynamic: bool = False) -> None:
+    def parse(self, tool_source: ToolSource, guid: str | None = None, dynamic: bool = False) -> None:
         super().parse(tool_source, guid, dynamic)
         if self.profile < 19.05:
             # Expression tools were introduced in 19.05 and we don't want crazy stuff like failing on stderr
@@ -3534,8 +3523,6 @@ class DataSourceTool(OutputParameterJSONTool):
 
     def parse_inputs(self, tool_source):
         super().parse_inputs(tool_source)
-        # Open all data_source tools in _top.
-        self.target = "_top"
         # data_source tools cannot check param values
         self.check_values = False
         if "GALAXY_URL" not in self.inputs:
@@ -3922,8 +3909,9 @@ class UnzipCollectionTool(DatabaseOperationTool):
 
         assert collection.collection_type == "paired"
         forward_o, reverse_o = collection.dataset_instances
-        forward, reverse = forward_o.copy(copy_tags=forward_o.tags, flush=False), reverse_o.copy(
-            copy_tags=reverse_o.tags, flush=False
+        forward, reverse = (
+            forward_o.copy(copy_tags=forward_o.tags, flush=False),
+            reverse_o.copy(copy_tags=reverse_o.tags, flush=False),
         )
         self._add_datasets_to_history(history, [forward, reverse])
 
@@ -3940,8 +3928,9 @@ class ZipCollectionTool(DatabaseOperationTool):
         forward_o = incoming["input_forward"]
         reverse_o = incoming["input_reverse"]
 
-        forward, reverse = forward_o.copy(copy_tags=forward_o.tags, flush=False), reverse_o.copy(
-            copy_tags=reverse_o.tags, flush=False
+        forward, reverse = (
+            forward_o.copy(copy_tags=forward_o.tags, flush=False),
+            reverse_o.copy(copy_tags=reverse_o.tags, flush=False),
         )
         new_elements = {}
         new_elements["forward"] = forward
@@ -5059,7 +5048,7 @@ tool_types = {tool_class.tool_type: tool_class for tool_class in TOOL_CLASSES}
 # ---- Utility classes to be factored out -----------------------------------
 
 
-def _rerun_remap_job_id(trans, incoming, tool_id: Optional[str]) -> Optional[int]:
+def _rerun_remap_job_id(trans, incoming, tool_id: str | None) -> int | None:
     rerun_remap_job_id = None
     if "rerun_remap_job_id" in incoming:
         try:

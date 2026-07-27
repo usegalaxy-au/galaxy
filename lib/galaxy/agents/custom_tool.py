@@ -71,14 +71,14 @@ _SCRIPT_INVOCATION_RE = re.compile(
 )
 
 
-def _find_validation_error(exc: BaseException) -> Optional[ValidationError]:
+def _find_validation_error(exc: BaseException) -> ValidationError | None:
     """Walk the exception cause chain looking for a pydantic ValidationError.
 
     pydantic-ai wraps validation failures inside UnexpectedModelBehavior after
     exhausting retries; the original ValidationError surfaces via __cause__.
     """
     seen: set[int] = set()
-    current: Optional[BaseException] = exc
+    current: BaseException | None = exc
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         if isinstance(current, ValidationError):
@@ -87,7 +87,7 @@ def _find_validation_error(exc: BaseException) -> Optional[ValidationError]:
     return None
 
 
-def _invalid_attempt_yaml(messages: list[Any]) -> Optional[str]:
+def _invalid_attempt_yaml(messages: list[Any]) -> str | None:
     """Best-effort render of the model's last ``final_result`` tool-call arguments
     (the attempt that just failed schema validation) as YAML.
 
@@ -184,7 +184,7 @@ class _ProducerFailure:
     """
 
     errors: list[str]
-    prior_yaml: Optional[str] = None
+    prior_yaml: str | None = None
 
 
 class CustomToolAgent(BaseGalaxyAgent):
@@ -233,7 +233,7 @@ class CustomToolAgent(BaseGalaxyAgent):
         tag_verifier: Callable[[str], Optional[bool]] = biocontainer_tag_built,
     ):
         super().__init__(deps)
-        self._critic_agent: Optional[Agent[GalaxyAgentDependencies, CritiqueReport]] = None
+        self._critic_agent: Agent[GalaxyAgentDependencies, CritiqueReport] | None = None
         self._container_critic_agent: Optional[Agent[GalaxyAgentDependencies, InferredDependencies]] = None
         # Injected so tests can supply fakes instead of patching the module globals
         # (and to keep unit tests off the network).
@@ -337,7 +337,7 @@ class CustomToolAgent(BaseGalaxyAgent):
         """
         return bool(self._get_agent_config("container_recommendation_enabled", False))
 
-    async def process(self, query: str, context: Optional[dict[str, Any]] = None) -> AgentResponse:
+    async def process(self, query: str, context: dict[str, Any] | None = None) -> AgentResponse:
         validation_error = self._validate_query(query)
         if validation_error:
             return self._validation_error_response(validation_error)
@@ -446,10 +446,10 @@ class CustomToolAgent(BaseGalaxyAgent):
     async def _produce_tool(
         self,
         query: str,
-        retry_errors: Optional[list[str]] = None,
-        critique: Optional[CritiqueReport] = None,
-        prior_yaml: Optional[str] = None,
-    ) -> Optional[tuple[UserToolSource, str, Any] | _ProducerFailure]:
+        retry_errors: list[str] | None = None,
+        critique: CritiqueReport | None = None,
+        prior_yaml: str | None = None,
+    ) -> tuple[UserToolSource, str, Any] | _ProducerFailure | None:
         """Run the producer agent. Returns (tool, yaml, raw_result), a
         ``_ProducerFailure``, or None.
 
@@ -496,9 +496,9 @@ class CustomToolAgent(BaseGalaxyAgent):
     @staticmethod
     def _build_producer_prompt(
         query: str,
-        retry_errors: Optional[list[str]] = None,
-        critique: Optional[CritiqueReport] = None,
-        prior_yaml: Optional[str] = None,
+        retry_errors: list[str] | None = None,
+        critique: CritiqueReport | None = None,
+        prior_yaml: str | None = None,
     ) -> str:
         if not retry_errors and not critique:
             return query
@@ -543,7 +543,7 @@ class CustomToolAgent(BaseGalaxyAgent):
         sections.append("Original request (for reference):\n\n" + query)
         return "\n\n".join(sections)
 
-    async def _run_critic(self, tool_yaml: str, query: str) -> Optional[CritiqueReport]:
+    async def _run_critic(self, tool_yaml: str, query: str) -> CritiqueReport | None:
         """Run the quality critic. Returns None if the critic call fails."""
         critic = self._get_critic_agent()
         critic_prompt = (

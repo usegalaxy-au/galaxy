@@ -2,7 +2,7 @@
 VENV?=.venv
 # Source virtualenv to execute command (black, isort, sphinx, twine, etc...)
 IN_VENV=if [ -f "$(VENV)/bin/activate" ]; then . "$(VENV)/bin/activate"; fi;
-RELEASE_CURR:=26.1
+RELEASE_CURR:=26.2
 RELEASE_UPSTREAM:=upstream
 CONFIG_MANAGE=$(IN_VENV) python lib/galaxy/config/config_manage.py
 PROJECT_URL?=https://github.com/galaxyproject/galaxy
@@ -30,10 +30,6 @@ SPACE := $() $()
 NEVER_PYUPGRADE_PATHS := .venv/ .tox/ lib/galaxy/schema/bco/ \
 	lib/galaxy/schema/drs/ lib/tool_shed_client/schema/trs \
 	scripts/check_python.py tools/ test/functional/tools/cwl_tools/
-PY38_PYUPGRADE_PATHS := lib/galaxy/exceptions/ lib/galaxy/job_metrics/ \
-	lib/galaxy/objectstore/ lib/galaxy/tool_util/ lib/galaxy/tool_util_models/ \
-	lib/galaxy/util/ test/unit/job_metrics/ test/unit/objectstore/ \
-	test/unit/tool_util/ test/unit/tool_util_models/ test/unit/util/
 
 all: help
 	@echo "This makefile is used for building Galaxy's JS client, documentation, and drive the release process. A sensible all target is not implemented."
@@ -62,10 +58,9 @@ format:  ## Format Python code base
 remove-unused-imports:  ## Remove unused imports in Python code base
 	$(IN_VENV) autoflake --in-place --remove-all-unused-imports --recursive --verbose lib/ test/
 
-pyupgrade:  ## Convert older code patterns to Python 3.8/3.10 idiomatic ones
-	ack --type=python -f | grep -v '^$(subst $(SPACE),\|^,$(NEVER_PYUPGRADE_PATHS) $(PY38_PYUPGRADE_PATHS))' | xargs pyupgrade --py310-plus
-	ack --type=python -f | grep -v '^$(subst $(SPACE),\|^,$(NEVER_PYUPGRADE_PATHS) $(PY38_PYUPGRADE_PATHS))' | xargs auto-walrus
-	ack --type=python -f $(PY38_PYUPGRADE_PATHS) | xargs pyupgrade --py38-plus
+pyupgrade:  ## Convert older code patterns to Python 3.10+ idiomatic ones
+	ack --type=python -f | grep -v '^$(subst $(SPACE),\|^,$(NEVER_PYUPGRADE_PATHS))' | xargs pyupgrade --py310-plus
+	ack --type=python -f | grep -v '^$(subst $(SPACE),\|^,$(NEVER_PYUPGRADE_PATHS))' | xargs auto-walrus
 
 docs-slides-ready:
 	test -f plantuml.jar ||  wget http://jaist.dl.sourceforge.net/project/plantuml/plantuml.jar
@@ -116,12 +111,15 @@ config-convert-dry-run: ## convert old style galaxy ini to yaml (dry run)
 config-convert: ## convert old style galaxy ini to yaml
 	$(CONFIG_MANAGE) convert galaxy
 
-config-rebuild: ## Rebuild all sample YAML and RST files from config schema
+config-rebuild: ## Rebuild all sample YAML, RST files, and type stubs from config schema
 	$(CONFIG_MANAGE) build_sample_yaml galaxy --add-comments
 	$(CONFIG_MANAGE) build_rst galaxy > doc/source/admin/galaxy_options.rst
+	$(CONFIG_MANAGE) build_config_types galaxy
 	$(CONFIG_MANAGE) build_sample_yaml reports --add-comments
 	$(CONFIG_MANAGE) build_rst reports > doc/source/admin/reports_options.rst
+	$(CONFIG_MANAGE) build_config_types reports
 	$(CONFIG_MANAGE) build_sample_yaml tool_shed --add-comments
+	$(CONFIG_MANAGE) build_config_types tool_shed
 
 config-lint: ## lint galaxy YAML configuration file
 	$(CONFIG_MANAGE) lint galaxy

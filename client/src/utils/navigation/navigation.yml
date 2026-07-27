@@ -1166,6 +1166,7 @@ workflow_extract:
     create_button: '[data-description="create-workflow-button"]'
     no_workflow_message: '[data-description="no-workflow-message"]'
     tool_card: '[data-step-type="tool"]'
+    tool_card_with_job_id: '[data-step-type="tool"][data-job-id]'
     mapped_tool_card: '[data-step-kind="mapped-tool"]'
     tool_card_checkbox: '[data-step-type="tool"] input[id^="g-card-select-"]'
     tool_card_checkbox_checked: '[data-step-type="tool"] input[id^="g-card-select-"]:checked'
@@ -1173,6 +1174,13 @@ workflow_extract:
     card_by_icj_id: '[data-icj-id="${icj_id}"]'
     mapped_badge: '[id^="g-card-badge-mapped-tool-"]'
     all_card_checkboxes_checked: '[data-description="workflow-extraction-form"] input[id^="g-card-select-"]:checked'
+    output_star_for_job: '[data-job-id="${job_id}"] [data-output-star]'
+    output_star_active_for_job: '[data-job-id="${job_id}"] [data-output-star].active'
+    output_label_for_job: '[data-job-id="${job_id}"] [data-output-label]'
+    all_active_output_stars: '[data-description="workflow-extraction-form"] [data-output-star].active'
+    output_rename_input: '#output-name-input'
+    output_rename_confirm: '#rename-modal-output .g-modal-confirm-buttons button:last-of-type'
+    output_rename_cancel: '#rename-modal-output .g-modal-confirm-buttons button:first-of-type'
 
 invocations:
   selectors:
@@ -1531,6 +1539,11 @@ beta_upload:
     target_history_change_link: '.target-history-banner .change-history-link'
     history_selector_modal: '.g-dialog'
     history_selector_modal_item: '.g-dialog [data-pk="${history_id}"]'
+    # Upload panel advanced mode switch
+    advanced_mode_toggle_checkbox: '[data-test-id="upload-advanced-mode-toggle"]'
+    # Target-object-store selectors (TargetObjectStoreSelector inside UploadMethodView)
+    target_object_store_selector_dropdown: '.target-destination-item [data-test-id="upload-target-object-store-selector"] .target-object-store-multiselect .multiselect__select'
+    target_object_store_selector_option: '.target-destination-item [data-test-id="upload-target-object-store-selector"] .target-object-store-multiselect.multiselect--active [data-test-id="target-object-store-option"][data-id="${object_store_id}"]'
     # Composite-file selectors
     composite_slot_mode_dropdown: '.composite-file-upload .composite-slot-row:nth-of-type(${row}) [data-test-id="composite-slot-mode-dropdown"] .dropdown-toggle'
     composite_slot_enter_local_action: '.composite-file-upload .composite-slot-row:nth-of-type(${row}) [data-test-id="composite-slot-enter-local"]'

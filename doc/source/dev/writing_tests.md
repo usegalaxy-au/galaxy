@@ -77,13 +77,13 @@ find the right documentation for a given test one wishes to write.
       - **Client/ES6**
 
         These tests should be placed in ``client/src`` directly and executed
-        via Vitest. Checkout [Frontend/ES6 Unit Tests](#es6_unit) below for more
+        via Vitest. Check out [Frontend/ES6 Unit Tests](#es6_unit) below for more
         information.
 
       - **Backend/Python**
 
         These tests should be placed in ``test/unit`` or doctests and
-        executed via pytest. Checkout [Backend/Python Unit Tests](#python_unit) below for more
+        executed via pytest. Check out [Backend/Python Unit Tests](#python_unit) below for more
         information.
 
   - **Yes**
@@ -1145,7 +1145,7 @@ class TestWithExternalService(integration_util.IntegrationTestCase):
 | ``keycloak/keycloak:26.2`` | OIDC authentication | ``oidc/test_auth_oidc.py`` |
 | ``mvdbeek/galaxy-integration-docker-images:slurm-22.01`` | Slurm scheduler | ``test_cli_runners.py`` |
 | ``mvdbeek/galaxy-integration-docker-images:openpbs-22.01`` | PBS scheduler | ``test_cli_runners.py`` |
-| ``savannah.ornl.gov/ndip/public-docker/rucio:1.29.8`` | Rucio data management | ``objectstore/`` tests |
+| ``savannah.ornl.gov/ndip/public-docker/rucio:40.2.0`` | Rucio data management | ``objectstore/`` tests |
 | ``onedata/onezone:21.02.5-dev`` | Onedata storage | ``objectstore/`` tests |
 
 **Environment variables for external services:**
@@ -1212,8 +1212,8 @@ see the [Browser Automation README](https://github.com/galaxyproject/galaxy/blob
 ### Jupyter + Selenium
 
 Jupyter can leveraged to develop Selenium test cases interactively,
-checkout out the [``galaxy_test.selenium.jupyter`` documentation](../lib/galaxy_test.selenium.jupyter)
-for more a full discussion of this.
+check out the [``galaxy_test.selenium.jupyter`` documentation](../lib/galaxy_test.selenium.jupyter)
+for a full discussion of this.
 
 ### API Abstractions Available
 

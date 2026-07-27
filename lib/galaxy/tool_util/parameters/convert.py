@@ -1,16 +1,15 @@
 """Utilities for converting between request states."""
 
 import logging
+from collections.abc import (
+    Callable,
+    Sequence,
+)
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import (
     Any,
-    Callable,
     cast,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Union,
 )
 
 from galaxy.tool_util_models.parameters import (
@@ -59,6 +58,7 @@ from .state import (
     RequestInternalToolState,
     RequestToolState,
     TestCaseToolState,
+    WorkflowStepLinkedToolState,
 )
 from .visitor import (
     Callback,
@@ -76,15 +76,21 @@ DereferenceCallable = Callable[[DataRequestUri], DataRequestInternalHda]
 DereferenceCollectionCallable = Callable[[DataRequestCollectionUri], DataRequestInternalHdca]
 # interfaces for adapting test data dictionaries to tool request dictionaries
 # e.g. {class: File, path: foo.bed} => {src: hda, id: ab1235cdfea3}
-AdaptDatasets = Callable[[JsonTestDatasetDefDict], Union[DataRequestHda, DataRequestUri]]
+AdaptDatasets = Callable[[JsonTestDatasetDefDict], DataRequestHda | DataRequestUri]
 AdaptCollections = Callable[[JsonTestCollectionDefDict], DataCollectionRequest]
 
 OPENAPI_REF_TEMPLATE = "#/components/schemas/{model}"
+CONNECTED_VALUE = {"__class__": "ConnectedValue"}
+CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE = "cross-product map-over is not modeled by workflow extraction"
+
+
+class RequestInternalToWorkflowStateError(ValueError):
+    """Raised when request_internal state cannot be represented as workflow state."""
 
 
 def cwl_runtime_model(input_models: ToolParameterBundle):
     model = create_job_runtime_model(input_models)
-    openapi_schema: Dict[str, Any] = {
+    openapi_schema: dict[str, Any] = {
         "openapi": "3.1.0",
         "info": {
             "title": "Custom API",
@@ -104,7 +110,7 @@ def decode(
     external_state: RequestToolState,
     input_models: ToolParameterBundle,
     decode_id: Callable[[str], int],
-    name_base: Optional[str] = None,
+    name_base: str | None = None,
 ) -> RequestInternalToolState:
     """Prepare an internal representation of tool state (request_internal) for storing in the database."""
 
@@ -176,14 +182,14 @@ def strictify(relaxed_state: RelaxedRequestToolState, input_models: ToolParamete
 
     tool_state = deepcopy(relaxed_state.input_state)
 
-    def _strictify_parameter(tool_state: Dict[str, Any], parameter: ToolParameterT) -> None:
+    def _strictify_parameter(tool_state: dict[str, Any], parameter: ToolParameterT) -> None:
         if isinstance(parameter, ConditionalParameterModel):
             conditional_state = _initialize_conditional_state(parameter, tool_state)
 
             test_parameter = parameter.test_parameter
             test_parameter_name = test_parameter.name
 
-            explicit_test_value: Optional[DiscriminatorType] = (
+            explicit_test_value: DiscriminatorType | None = (
                 conditional_state[test_parameter_name] if test_parameter_name in conditional_state else None
             )
             test_value = validate_explicit_conditional_test_value(test_parameter_name, explicit_test_value)
@@ -212,7 +218,7 @@ def strictify(relaxed_state: RelaxedRequestToolState, input_models: ToolParamete
                 if not parameter.optional and tool_state[parameter_name] is None:
                     tool_state[parameter_name] = parameter.default_value if parameter.default_value is not None else ""
 
-    def _strictify_parameters(tool_state: Dict[str, Any], input_models: ToolParameterBundle) -> None:
+    def _strictify_parameters(tool_state: dict[str, Any], input_models: ToolParameterBundle) -> None:
         for parameter in input_models.parameters:
             _strictify_parameter(tool_state, parameter)
 
@@ -223,7 +229,7 @@ def strictify(relaxed_state: RelaxedRequestToolState, input_models: ToolParamete
     return request_state
 
 
-def _deferred_url_default_request(url: str) -> Dict[str, Any]:
+def _deferred_url_default_request(url: str) -> dict[str, Any]:
     """Build the deferred dataset request used to materialize a data param's url_default."""
     return DataRequestUri(url=url, ext="auto", deferred=True).model_dump()
 
@@ -286,6 +292,119 @@ def dereference(
     return request_state
 
 
+def to_workflow_step_state(
+    internal_state: RequestInternalToolState,
+    input_models: ToolParameterBundle,
+) -> WorkflowStepLinkedToolState:
+    """Convert persisted request_internal state to linked workflow step state.
+
+    Data and collection references are represented in workflows by input
+    connections, so their literal database references are replaced with
+    ConnectedValue markers. Scalar parameters are preserved unchanged.
+    """
+
+    def workflowify_data_element(element: dict) -> dict:
+        if element.get("__class__") == "Batch":
+            if element.get("linked") is False:
+                raise RequestInternalToWorkflowStateError(CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE)
+            values = element.get("values")
+            if not isinstance(values, list) or len(values) != 1:
+                raise RequestInternalToWorkflowStateError("Batch map-over inputs must contain exactly one value")
+        return CONNECTED_VALUE.copy()
+
+    def workflow_step_callback(parameter: ToolParameterT, value: Any):
+        if isinstance(parameter, DataParameterModel):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            if parameter.multiple and isinstance(value, list):
+                if value:
+                    return workflowify_data_element(cast(dict, value[0]))
+                return VISITOR_NO_REPLACEMENT
+            assert isinstance(value, dict), str(value)
+            return workflowify_data_element(value)
+        elif isinstance(parameter, DataCollectionParameterModel):
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            assert isinstance(value, dict), str(value)
+            return workflowify_data_element(value)
+        else:
+            return VISITOR_NO_REPLACEMENT
+
+    workflow_state_dict = visit_input_values(
+        input_models,
+        internal_state,
+        workflow_step_callback,
+    )
+    workflow_state = WorkflowStepLinkedToolState(workflow_state_dict)
+    workflow_state.validate(input_models)
+    return workflow_state
+
+
+@dataclass
+class MappedCollectionInput:
+    """Source-neutral description of a collection an input was mapped over.
+
+    The workflow execute site carries map-over as live collection objects on a
+    MatchingCollections instance. Reducing each mapped input to this small
+    record at the call site keeps the converter free of SQLAlchemy objects and
+    unit testable. ``src`` is "hdca" for a direct collection map-over or "dce"
+    for subcollection mapping; ``map_over_type`` mirrors the subcollection type
+    description; ``linked`` is always True on the workflow path.
+    """
+
+    src: str
+    id: int
+    map_over_type: str | None = None
+    linked: bool = True
+
+
+def from_workflow_execution_state(
+    resolved_tool_state: dict[str, Any],
+    mapped_inputs: dict[str, MappedCollectionInput],
+    input_models: ToolParameterBundle,
+) -> RequestInternalToolState:
+    """Synthesize request_internal from a resolved workflow tool-step execution.
+
+    ``resolved_tool_state`` is the *whole-step* resolved input state - every
+    connection already resolved to its concrete upstream ``{src, id}`` and
+    scalars to their values - **not** a per-job expansion or a representative
+    sliced combination (rederiving from the step is the point; a representative
+    job would reintroduce post-hoc lossiness). Inputs the step mapped over are
+    replaced with their parent collection reference wrapped in a length-1 Batch
+    (so the forward ``to_workflow_step_state`` never trips its "exactly one
+    value" guard); every other value passes through unchanged. ``linked=False``
+    (cross-product) is never produced by the workflow path and is rejected to
+    stay symmetric with ``to_workflow_step_state``.
+    """
+
+    def batch_for(mapped: MappedCollectionInput) -> dict:
+        if mapped.linked is False:
+            raise RequestInternalToWorkflowStateError(CROSS_PRODUCT_MAP_OVER_ERROR_MESSAGE)
+        value: dict[str, Any] = {"src": mapped.src, "id": mapped.id}
+        if mapped.map_over_type is not None:
+            value["map_over_type"] = mapped.map_over_type
+        return {"__class__": "Batch", "values": [value], "linked": mapped.linked}
+
+    def request_internal_callback(parameter: ToolParameterT, value: Any):
+        if isinstance(parameter, (DataParameterModel, DataCollectionParameterModel)):
+            mapped = mapped_inputs.get(parameter.name)
+            if mapped is not None:
+                return batch_for(mapped)
+        return VISITOR_NO_REPLACEMENT
+
+    request_internal_dict = visit_input_values(
+        input_models,
+        JobInternalToolState(resolved_tool_state),
+        request_internal_callback,
+    )
+    internal_state = RequestInternalToolState(request_internal_dict)
+    # Defer validation to the caller. The structural payload (input refs,
+    # Batch wrapping) is independently useful even when type validation
+    # rejects the values; capturing it lets the caller decide whether
+    # type strictness should erase lineage.
+    return internal_state
+
+
 def encode_test(
     test_case_state: TestCaseToolState,
     input_models: ToolParameterBundle,
@@ -298,7 +417,7 @@ def encode_test(
             if value is not None:
                 if parameter.multiple:
                     assert isinstance(value, list), str(value)
-                    test_datasets = cast(List[JsonTestDatasetDefDict], value)
+                    test_datasets = cast(list[JsonTestDatasetDefDict], value)
                     return [d.model_dump() for d in map(adapt_datasets, test_datasets)]
                 else:
                     assert isinstance(value, dict), str(value)
@@ -340,11 +459,11 @@ def encode_test(
 
 
 def fill_static_defaults(
-    tool_state: Dict[str, Any],
+    tool_state: dict[str, Any],
     input_models: ToolParameterBundle,
     profile: float,
     partial: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fill static defaults into a job_internal tool state; pass only that representation.
 
     Request/request_internal states record absent inputs as absent - filling them here would
@@ -359,12 +478,12 @@ def fill_static_defaults(
     return tool_state
 
 
-def _fill_defaults(tool_state: Dict[str, Any], input_models: ToolParameterBundle) -> None:
+def _fill_defaults(tool_state: dict[str, Any], input_models: ToolParameterBundle) -> None:
     for parameter in input_models.parameters:
         _fill_default_for(tool_state, parameter)
 
 
-def _fill_default_for(tool_state: Dict[str, Any], parameter: ToolParameterT) -> None:
+def _fill_default_for(tool_state: dict[str, Any], parameter: ToolParameterT) -> None:
     parameter_name = parameter.name
     if isinstance(parameter, BooleanParameterModel):
         if parameter_name not in tool_state:
@@ -405,7 +524,7 @@ def _fill_default_for(tool_state: Dict[str, Any], parameter: ToolParameterT) -> 
         test_parameter = parameter.test_parameter
         test_parameter_name = test_parameter.name
 
-        explicit_test_value: Optional[DiscriminatorType] = (
+        explicit_test_value: DiscriminatorType | None = (
             conditional_state[test_parameter_name] if test_parameter_name in conditional_state else None
         )
         test_value = validate_explicit_conditional_test_value(test_parameter_name, explicit_test_value)
@@ -438,12 +557,12 @@ def _fill_default_for(tool_state: Dict[str, Any], parameter: ToolParameterT) -> 
                 tool_state[parameter_name] = parameter.default_value if parameter.default_value is not None else ""
 
 
-def _fill_url_defaults(tool_state: Dict[str, Any], input_models: ToolParameterBundle) -> None:
+def _fill_url_defaults(tool_state: dict[str, Any], input_models: ToolParameterBundle) -> None:
     for parameter in input_models.parameters:
         _fill_url_default_for(tool_state, parameter)
 
 
-def _fill_url_default_for(tool_state: Dict[str, Any], parameter: ToolParameterT) -> None:
+def _fill_url_default_for(tool_state: dict[str, Any], parameter: ToolParameterT) -> None:
     """Inject deferred ``url_default`` data requests for absent data parameters.
 
     Unlike :func:`_fill_default_for` this materializes *only* ``url_default`` data
@@ -461,7 +580,7 @@ def _fill_url_default_for(tool_state: Dict[str, Any], parameter: ToolParameterT)
         raw_state = tool_state.get(parameter_name)
         conditional_seed = raw_state if isinstance(raw_state, dict) else {}
         test_parameter_name = parameter.test_parameter.name
-        explicit_test_value: Optional[DiscriminatorType] = conditional_seed.get(test_parameter_name)
+        explicit_test_value: DiscriminatorType | None = conditional_seed.get(test_parameter_name)
         test_value = validate_explicit_conditional_test_value(test_parameter_name, explicit_test_value)
         when = _select_which_when(parameter, test_value, conditional_seed)
         if not _parameters_have_url_default(when.parameters):
@@ -487,30 +606,30 @@ def _parameters_have_url_default(parameters: Sequence[ToolParameterT]) -> bool:
     )
 
 
-def _initialize_section_state(parameter: SectionParameterModel, tool_state: Dict[str, Any]) -> Dict[str, Any]:
+def _initialize_section_state(parameter: SectionParameterModel, tool_state: dict[str, Any]) -> dict[str, Any]:
     parameter_name = parameter.name
     if parameter_name not in tool_state:
         tool_state[parameter_name] = {}
-    section_state = cast(Dict[str, Any], tool_state[parameter_name])
+    section_state = cast(dict[str, Any], tool_state[parameter_name])
     return section_state
 
 
-def _initialize_conditional_state(parameter: ConditionalParameterModel, tool_state: Dict[str, Any]) -> Dict[str, Any]:
+def _initialize_conditional_state(parameter: ConditionalParameterModel, tool_state: dict[str, Any]) -> dict[str, Any]:
     parameter_name = parameter.name
     if parameter_name not in tool_state:
         tool_state[parameter_name] = {}
 
     raw_conditional_state = tool_state[parameter_name]
     assert isinstance(raw_conditional_state, dict)
-    conditional_state = cast(Dict[str, Any], raw_conditional_state)
+    conditional_state = cast(dict[str, Any], raw_conditional_state)
     return conditional_state
 
 
-def _initialize_repeat_state(parameter: RepeatParameterModel, tool_state: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _initialize_repeat_state(parameter: RepeatParameterModel, tool_state: dict[str, Any]) -> list[dict[str, Any]]:
     parameter_name = parameter.name
     if parameter_name not in tool_state:
         tool_state[parameter_name] = []
-    repeat_instances = cast(List[Dict[str, Any]], tool_state[parameter_name])
+    repeat_instances = cast(list[dict[str, Any]], tool_state[parameter_name])
     if parameter.min:
         while len(repeat_instances) < parameter.min:
             repeat_instances.append({})
@@ -518,7 +637,7 @@ def _initialize_repeat_state(parameter: RepeatParameterModel, tool_state: Dict[s
 
 
 def _select_which_when(
-    conditional: ConditionalParameterModel, test_value: Optional[DiscriminatorType], conditional_state: Dict[str, Any]
+    conditional: ConditionalParameterModel, test_value: DiscriminatorType | None, conditional_state: dict[str, Any]
 ) -> ConditionalWhen:
     for when in conditional.whens:
         if test_value is None and when.is_default_when:
@@ -610,7 +729,7 @@ def _decode_callback_for(decode_id: DecodeFunctionT) -> Callback:
 
 
 DatasetToRuntimeJson = Callable[[DataJobInternalT], DataInternalJson]
-CollectionToRuntimeJson = Callable[[DataCollectionRequestInternal, Optional[str]], Any]
+CollectionToRuntimeJson = Callable[[DataCollectionRequestInternal, str | None], Any]
 
 
 # Parameter models the narrow YAML authoring layer is allowed to produce.

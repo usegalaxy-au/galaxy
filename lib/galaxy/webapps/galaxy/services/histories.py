@@ -10,8 +10,6 @@ from tempfile import (
 from typing import (
     cast,
     Literal,
-    Optional,
-    Union,
 )
 
 from sqlalchemy import (
@@ -43,6 +41,7 @@ from galaxy.managers.histories import (
 )
 from galaxy.managers.history_graph import HistoryGraphManager
 from galaxy.managers.users import UserManager
+from galaxy.managers.workflow_extraction_naming import suggested_output_name
 from galaxy.model import (
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
@@ -109,7 +108,10 @@ from galaxy.webapps.galaxy.services.base import (
 )
 from galaxy.webapps.galaxy.services.notifications import NotificationService
 from galaxy.webapps.galaxy.services.sharable import ShareableService
-from galaxy.workflow.extract import summarize
+from galaxy.workflow.extract import (
+    _skip_output_assoc_name,
+    summarize,
+)
 
 log = logging.getLogger(__name__)
 
@@ -161,8 +163,8 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         trans: ProvidesHistoryContext,
         serialization_params: SerializationParams,
         filter_query_params: FilterQueryParams,
-        deleted_only: Optional[bool] = False,
-        all_histories: Optional[bool] = False,
+        deleted_only: bool | None = False,
+        all_histories: bool | None = False,
     ):
         """
         Return a collection of histories for the current user. Additional filters can be applied.
@@ -210,7 +212,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         ]
         return rval
 
-    def _get_deleted_filter(self, deleted: Optional[bool], filter_params: list[tuple[str, str, str]]):
+    def _get_deleted_filter(self, deleted: bool | None, filter_params: list[tuple[str, str, str]]):
         # TODO: this should all be removed (along with the default) in v2
         # support the old default of not-returning/filtering-out deleted histories
         try:
@@ -240,7 +242,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         payload: HistoryIndexQueryPayload,
         serialization_params: SerializationParams,
         include_total_count: bool = False,
-    ) -> tuple[list[AnyHistoryView], Union[int, None]]:
+    ) -> tuple[list[AnyHistoryView], int | None]:
         """Return a list of History accessible by the user
 
         :rtype:     list
@@ -381,7 +383,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self,
         trans: ProvidesHistoryContext,
         serialization_params: SerializationParams,
-        history_id: Optional[DecodedDatabaseIdField] = None,
+        history_id: DecodedDatabaseIdField | None = None,
     ):
         """
         Returns detailed information about the history with the given encoded `id`. If no `id` is
@@ -407,12 +409,12 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         history_id: DecodedDatabaseIdField,
         limit: int = 500,
         include_deleted: bool = False,
-        seed_src: Optional[NodeSrc] = None,
-        seed_id: Optional[str] = None,
+        seed_src: NodeSrc | None = None,
+        seed_id: str | None = None,
         direction: Literal["backward", "forward", "both"] = "both",
         depth: int = 20,
-        seed_scope_src: Optional[Literal["hda", "hdca"]] = None,
-        seed_scope_id: Optional[str] = None,
+        seed_scope_src: Literal["hda", "hdca"] | None = None,
+        seed_scope_id: str | None = None,
     ) -> HistoryGraphResponse:
         history = self.manager.get_accessible(history_id, trans.user, current_history=trans.history)
         seed = self._build_node_ref("seed", seed_src, seed_id)
@@ -430,7 +432,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         )
 
     @staticmethod
-    def _build_node_ref(param: str, src: Optional[str], id: Optional[str]) -> Optional[NodeRef]:
+    def _build_node_ref(param: str, src: str | None, id: str | None) -> NodeRef | None:
         if src is None and id is None:
             return None
         if src is None or id is None:
@@ -649,8 +651,8 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         trans: ProvidesHistoryContext,
         history_id: DecodedDatabaseIdField,
         use_tasks: bool = False,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ):
         if use_tasks:
             return self.history_export_manager.get_task_exports(trans, history_id, limit, offset)
@@ -660,7 +662,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self,
         trans,
         history_id: DecodedDatabaseIdField,
-        payload: Optional[ExportHistoryArchivePayload] = None,
+        payload: ExportHistoryArchivePayload | None = None,
     ) -> tuple[HistoryArchiveExportResult, bool]:
         """
         start job (if needed) to create history export for corresponding
@@ -716,7 +718,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self,
         trans: ProvidesHistoryContext,
         history_id: DecodedDatabaseIdField,
-        jeha_id: Union[DecodedDatabaseIdField, LatestLiteral],
+        jeha_id: DecodedDatabaseIdField | LatestLiteral,
     ) -> model.JobExportHistoryArchive:
         """Returns the exported history archive information if it's ready
         or raises an exception if not."""
@@ -791,14 +793,14 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         )
         return serialized_history
 
-    def _build_order_by(self, order: Optional[str]):
+    def _build_order_by(self, order: str | None):
         return self.build_order_by(self.manager, order or DEFAULT_ORDER_BY)
 
     def archive_history(
         self,
         trans: ProvidesHistoryContext,
         history_id: DecodedDatabaseIdField,
-        payload: Optional[ArchiveHistoryRequestPayload] = None,
+        payload: ArchiveHistoryRequestPayload | None = None,
     ) -> AnyArchivedHistoryView:
         """Marks the history with the given id as archived and optionally associates it with the given archive export record in the payload.
 
@@ -851,7 +853,15 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 icj_assoc.job_id: icj_assoc for icj_assoc in trans.sa_session.scalars(stmt).unique().all()
             }
 
-        def serialize_output(content) -> WorkflowExtractionOutput:
+        def serialize_output(
+            content, output_name: str | None = None, expose_outputs: bool = False
+        ) -> WorkflowExtractionOutput:
+            suggested = None
+            if output_name is not None:
+                content_kind: Literal["hda", "hdca"] = (
+                    "hdca" if content.history_content_type == "dataset_collection" else "hda"
+                )
+                suggested = suggested_output_name(trans, content.id, content_kind)
             return WorkflowExtractionOutput.model_validate(
                 {
                     "id": content.id,
@@ -860,6 +870,10 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                     "state": content.state,
                     "deleted": content.deleted,
                     "history_content_type": content.history_content_type,
+                    "output_name": output_name,
+                    "suggested_name": suggested.name if suggested else None,
+                    "suggested_name_source": suggested.source if suggested else None,
+                    "exposed": expose_outputs,
                 }
             )
 
@@ -868,10 +882,20 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 return "input_collection"
             return "input_dataset"
 
+        def workflow_output_name(content, output_name: str | None) -> str | None:
+            if output_name and _skip_output_assoc_name(output_name):
+                return None
+            if content.history_content_type == "dataset_collection":
+                return getattr(content, "implicit_output_name", None) or output_name
+            return output_name
+
         jobs_list = []
         for job, datasets in jobs.items():
             is_fake = getattr(job, "is_fake", False)
-            outputs = [serialize_output(data) for _, data in datasets]
+            input_outputs = [serialize_output(data) for _, data in datasets]
+            tool_outputs = [
+                serialize_output(data, workflow_output_name(data, output_name)) for output_name, data in datasets
+            ]
             checked = any(not data.deleted for _, data in datasets)
 
             if is_fake:
@@ -879,13 +903,13 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 jobs_list.append(
                     WorkflowExtractionJob(
                         id=None,
-                        step_type=input_step_type(outputs),
+                        step_type=input_step_type(input_outputs),
                         tool_name=getattr(job, "name", None),
                         tool_id=None,
                         tool_version=None,
                         checked=checked,
                         tool_version_warning=None,
-                        outputs=outputs,
+                        outputs=input_outputs,
                         invalid=None,
                     )
                 )
@@ -912,7 +936,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                             tool_version=job.tool_version,
                             checked=False,
                             tool_version_warning=None,
-                            outputs=outputs,
+                            outputs=tool_outputs,
                             invalid=invalid_reason,
                         )
                     )
@@ -921,13 +945,13 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                     jobs_list.append(
                         WorkflowExtractionJob(
                             id=None,
-                            step_type=input_step_type(outputs),
+                            step_type=input_step_type(input_outputs),
                             tool_name=tool.name,
                             tool_id=None,
                             tool_version=None,
                             checked=checked,
                             tool_version_warning=None,
-                            outputs=outputs,
+                            outputs=input_outputs,
                             invalid=None,
                         )
                     )
@@ -951,7 +975,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                             tool_version=job.tool_version,
                             checked=checked,
                             tool_version_warning=tool_version_warning,
-                            outputs=outputs,
+                            outputs=tool_outputs,
                             invalid=None,
                             implicit_collection_jobs_id=(
                                 icj_assoc.implicit_collection_jobs_id if icj_assoc is not None else None
@@ -1001,7 +1025,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self,
         trans: ProvidesHistoryContext,
         history_id: DecodedDatabaseIdField,
-        force: Optional[bool] = False,
+        force: bool | None = False,
     ) -> AnyHistoryView:
         if trans.anonymous:
             raise glx_exceptions.AuthenticationRequired("Only registered users can access archived histories.")
@@ -1016,7 +1040,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         serialization_params: SerializationParams,
         filter_query_params: FilterQueryParams,
         include_total_matches: bool = False,
-    ) -> tuple[list[AnyArchivedHistoryView], Optional[int]]:
+    ) -> tuple[list[AnyArchivedHistoryView], int | None]:
         if trans.anonymous:
             raise glx_exceptions.AuthenticationRequired("Only registered users can have or access archived histories.")
 
@@ -1041,7 +1065,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         self,
         trans: ProvidesHistoryContext,
         history: model.History,
-        serialization_params: Optional[SerializationParams] = None,
+        serialization_params: SerializationParams | None = None,
         default_view: str = "detailed",
     ):
         if serialization_params is None:
@@ -1051,7 +1075,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
         archived_history["export_record_data"] = export_record_data
         return archived_history
 
-    def _get_export_record_data(self, history: model.History) -> Optional[ExportRecordData]:
+    def _get_export_record_data(self, history: model.History) -> ExportRecordData | None:
         if history.archive_export_id:
             export_record = self.history_export_manager.get_task_export_by_id(history.archive_export_id)
             export_metadata = self.history_export_manager.get_record_metadata(export_record)

@@ -11,11 +11,12 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+permissions: {}
 jobs:
   client-unit-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
         with:
           persist-credentials: false
       - name: Read Node.js version
@@ -26,7 +27,7 @@ jobs:
         with:
           node-version: ${{ steps.node-version.outputs.version }}
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           package_json_file: client/package.json
       - run: pnpm install --frozen-lockfile

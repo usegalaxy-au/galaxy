@@ -21,6 +21,9 @@ OBJECT_STORE_RUCIO_ACCOUNT = os.environ.get("GALAXY_INTEGRATION_OBJECT_STORE_RUC
 OBJECT_STORE_RUCIO_USERNAME = os.environ.get("GALAXY_INTEGRATION_OBJECT_STORE_RUCIO_USERNAME", "rucio")
 OBJECT_STORE_RUCIO_RSE_NAME = "TEST"
 OBJECT_STORE_RUCIO_ACCESS = os.environ.get("GALAXY_INTEGRATION_OBJECT_STORE_RUCIO_ACCESS", "rucio")
+OBJECT_STORE_RUCIO_IMAGE = os.environ.get(
+    "GALAXY_INTEGRATION_OBJECT_STORE_RUCIO_IMAGE", "savannah.ornl.gov/ndip/public-docker/rucio:40.2.0"
+)
 
 OBJECT_STORE_CONFIG = string.Template("""
 <object_store type="hierarchical" id="primary">
@@ -35,6 +38,35 @@ OBJECT_STORE_CONFIG = string.Template("""
         </object_store>
     </backends>
 </object_store>
+""")
+CLOUD_OBJECT_STORE_CONFIG = string.Template("""
+type: cloud
+provider: aws
+auth:
+  access_key: ${access_key}
+  secret_key: ${secret_key}
+
+bucket:
+  name: galaxy
+
+connection:
+  endpoint_url: http://${host}:${port}
+
+transfer:
+  multipart_threshold: 5242880
+  multipart_chunksize: 5242880
+  max_concurrency: 2
+
+cache:
+  path: ${temp_directory}/object_store_cache
+  size: 1000
+  cache_updated_data: ${cache_updated_data}
+
+extra_dirs:
+- type: job_work
+  path: ${temp_directory}/job_working_directory_cloud
+- type: temp
+  path: ${temp_directory}/tmp_cloud
 """)
 RUCIO_OBJECT_STORE_CONFIG = string.Template("""
     type: rucio
@@ -129,7 +161,7 @@ def wait_rucio_ready(container_name):
 
 def start_rucio(container_name):
     ports = [(OBJECT_STORE_PORT, 80)]
-    docker_run("savannah.ornl.gov/ndip/public-docker/rucio:1.29.8", container_name, ports=ports)
+    docker_run(OBJECT_STORE_RUCIO_IMAGE, container_name, ports=ports)
 
     wait_rucio_ready(container_name)
 
@@ -182,6 +214,62 @@ class BaseSwiftObjectStoreIntegrationTestCase(BaseObjectStoreIntegrationTestCase
         with open(config_path, "w") as f:
             f.write(
                 OBJECT_STORE_CONFIG.safe_substitute(
+                    {
+                        "temp_directory": temp_directory,
+                        "host": OBJECT_STORE_HOST,
+                        "port": OBJECT_STORE_PORT,
+                        "access_key": OBJECT_STORE_ACCESS_KEY,
+                        "secret_key": OBJECT_STORE_SECRET_KEY,
+                        "cache_updated_data": cls.updateCacheData(),
+                    }
+                )
+            )
+        config["object_store_config_file"] = config_path
+
+    def setUp(self):
+        super().setUp()
+        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
+
+    @classmethod
+    def updateCacheData(cls):
+        return True
+
+
+@integration_util.skip_unless_docker()
+class BaseCloudObjectStoreIntegrationTestCase(BaseObjectStoreIntegrationTestCase):
+    """Run the cloudbridge-based cloud object store against MinIO.
+
+    The transfer block keeps the multipart threshold at the 5 MiB provider
+    minimum so modest test datasets exercise the multipart upload path.
+    """
+
+    object_store_cache_path: str
+
+    @classmethod
+    def setUpClass(cls):
+        cls.container_name = f"{cls.__name__}_container"
+        start_minio(cls.container_name)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        docker_rm(cls.container_name)
+        super().tearDownClass()
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        temp_directory = cls._test_driver.mkdtemp()
+        cls.object_stores_parent = temp_directory
+        cls.object_store_cache_path = os.path.join(temp_directory, "object_store_cache")
+        config_path = os.path.join(temp_directory, "object_store_conf.yml")
+        config["object_store_store_by"] = "uuid"
+        config["metadata_strategy"] = "extended"
+        config["outputs_to_working_directory"] = True
+        config["retry_metadata_internally"] = False
+        with open(config_path, "w") as f:
+            f.write(
+                CLOUD_OBJECT_STORE_CONFIG.safe_substitute(
                     {
                         "temp_directory": temp_directory,
                         "host": OBJECT_STORE_HOST,

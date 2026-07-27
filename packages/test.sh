@@ -71,7 +71,7 @@ while read -r package_dir || [ -n "$package_dir" ]; do  # https://stackoverflow.
 
     # Use a throw-away virtualenv
     TEST_ENV_DIR=$(mktemp -d -t gxpkgtestenvXXXXXX)
-    ${VENV_CMD} "$TEST_ENV_DIR"
+    ${VENV_CMD} "${TEST_ENV_DIR}"
     # shellcheck disable=SC1091
     . "${TEST_ENV_DIR}/bin/activate"
     if [ "${PIP_CMD}" = 'python -m pip' ]; then
@@ -84,7 +84,7 @@ while read -r package_dir || [ -n "$package_dir" ]; do  # https://stackoverflow.
         ${PIP_CMD} install ${PIP_EXTRA_ARGS} '.[image-util,template,jstree,config-template,test]'
     elif [ "$package_dir" = "tool_util" ]; then
         ${PIP_CMD} install ${PIP_EXTRA_ARGS} '.[cwl,mulled,edam,extended-assertions,test]'
-    elif grep -q 'test =' setup.cfg 2>/dev/null; then
+    elif grep -q '^test = \[' pyproject.toml 2>/dev/null; then
         ${PIP_CMD} install ${PIP_EXTRA_ARGS} '.[test]'
     else
         ${PIP_CMD} install ${PIP_EXTRA_ARGS} .
@@ -115,4 +115,6 @@ while read -r package_dir || [ -n "$package_dir" ]; do  # https://stackoverflow.
         ${TWINE_CMD} check dist/*
     fi
     cd ..
+    deactivate
+    rm -rf "${TEST_ENV_DIR}"
 done < $PACKAGE_LIST_FILE

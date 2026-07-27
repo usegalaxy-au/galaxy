@@ -2,15 +2,14 @@
 
 import logging
 import os
+from collections.abc import Callable
 from typing import (
     Any,
-    Callable,
-    Dict,
+    Literal,
     TYPE_CHECKING,
 )
 
 from typing_extensions import (
-    Literal,
     NotRequired,
     TypedDict,
 )
@@ -127,6 +126,9 @@ def parse_config_xml(config_xml):
             "cache": cache_dict,
             "extra_dirs": extra_dirs,
             "private": CachingConcreteObjectStore.parse_private_from_config_xml(config_xml),
+            "enable_direct_download": CachingConcreteObjectStore.parse_enable_direct_download_from_config_xml(
+                config_xml
+            ),
         }
         name = config_xml.attrib.get("name", None)
         if name is not None:
@@ -171,7 +173,7 @@ class S3ObjectStore(CachingConcreteObjectStore):
         transfer_dict = config_dict.get("transfer") or {}
         typed_transfer_dict = {}
         for prefix in ["", "upload_", "download_"]:
-            options: Dict[str, Callable[[Any], Any]] = {
+            options: dict[str, Callable[[Any], Any]] = {
                 "multipart_threshold": int,
                 "max_concurrency": int,
                 "multipart_chunksize": int,
@@ -387,16 +389,21 @@ class S3ObjectStore(CachingConcreteObjectStore):
             with self._atomic_download(local_file_path) as tmp:
                 self._client.download_file(self.bucket, key, tmp)
 
-    def _get_object_url(self, obj, **kwargs):
+    def _get_object_url(self, obj, content_disposition=None, content_type=None, **kwargs):
         try:
             if self._exists(obj, **kwargs):
                 rel_path = self._construct_path(obj, **kwargs)
+                params = {
+                    "Bucket": self.bucket,
+                    "Key": rel_path,
+                }
+                if content_disposition is not None:
+                    params["ResponseContentDisposition"] = content_disposition
+                if content_type is not None:
+                    params["ResponseContentType"] = content_type
                 url = self._client.generate_presigned_url(
                     ClientMethod="get_object",
-                    Params={
-                        "Bucket": self.bucket,
-                        "Key": rel_path,
-                    },
+                    Params=params,
                     ExpiresIn=3600,
                     HttpMethod="GET",
                 )

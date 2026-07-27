@@ -61,6 +61,7 @@ export function useUploadSubmission() {
         batchId?: string,
         directCollectionCreation?: boolean,
         onProgress?: (percentage: number) => void,
+        targetObjectStoreId?: string,
     ): Promise<void> {
         if (prepared.apiItems.length === 0) {
             return;
@@ -72,6 +73,7 @@ export function useUploadSubmission() {
         return new Promise<void>((resolve, reject) => {
             const config: UploadDatasetsConfig = {
                 chunkSize,
+                preferredObjectStoreId: targetObjectStoreId,
                 success: (response) => {
                     const uploadedDatasets = datasetsFromFetchResponse(response);
 
@@ -183,6 +185,7 @@ export function useUploadSubmission() {
         historyId: string,
         prepared: PreparedUpload,
         onProgress?: (percentage: number) => void,
+        targetObjectStoreId?: string,
     ): Promise<UploadedDataset[]> {
         const datasets: UploadedDataset[] = [];
         const directCollectionCreation = isDirectCollectionCreation(prepared);
@@ -197,6 +200,7 @@ export function useUploadSubmission() {
             batchId,
             directCollectionCreation,
             onProgress,
+            targetObjectStoreId,
         );
         await processLibraryUploads(libraryUploads, historyId, datasets, batchId);
 

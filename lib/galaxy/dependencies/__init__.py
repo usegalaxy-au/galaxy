@@ -161,7 +161,7 @@ class ConditionalDependencies:
 
         # Parse file source templates config
         file_source_templates_conf_yml = self.config_object.file_source_templates_config_file
-        if exists(file_source_templates_conf_yml):
+        if file_source_templates_conf_yml and exists(file_source_templates_conf_yml):
             with open(file_source_templates_conf_yml) as f:
                 file_source_templates_conf = apply_syntactic_sugar(yaml.safe_load(f))
             for file_source_template in file_source_templates_conf:
@@ -253,6 +253,9 @@ class ConditionalDependencies:
 
     def check_boto3(self):
         return "boto3" in self.object_stores
+
+    def check_cloudbridge(self):
+        return "cloud" in self.object_stores
 
     def check_kamaki(self):
         return "pithos" in self.object_stores
@@ -359,6 +362,9 @@ class ConditionalDependencies:
 
     def check_iiif_fsspec(self):
         return "iiif" in self.file_sources
+
+    def check_mavedb_fsspec(self):
+        return "mavedb" in self.file_sources
 
 
 def strip_comment(line):

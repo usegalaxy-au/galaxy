@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/agents/history-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * History Summary
+         * @description **Warning**: This API is unstable and may change without notice.
+         */
+        post: operations["history_summary_api_ai_agents_history_summary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/agents/query": {
         parameters: {
             query?: never;
@@ -960,6 +980,30 @@ export interface paths {
          * @description Streams the dataset for download or the contents preview to be displayed in a browser.
          */
         head: operations["display_api_datasets__history_content_id__display_head"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{history_content_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Downloads the dataset, redirecting to the object store when possible.
+         * @description Downloads the whole dataset file. Clients must follow the 302 redirect this route may return.
+         */
+        get: operations["download_api_datasets__history_content_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Returns download metadata (size, filename) for the dataset.
+         * @description Downloads the whole dataset file. Clients must follow the 302 redirect this route may return.
+         */
+        head: operations["download_api_datasets__history_content_id__download_head"];
         patch?: never;
         trace?: never;
     };
@@ -2506,6 +2550,30 @@ export interface paths {
          * @description Streams the dataset for download or the contents preview to be displayed in a browser.
          */
         head: operations["history_contents_display_api_histories__history_id__contents__history_content_id__display_head"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/histories/{history_id}/contents/{history_content_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Downloads the dataset, redirecting to the object store when possible.
+         * @description Downloads the whole dataset file. Clients must follow the 302 redirect this route may return.
+         */
+        get: operations["history_contents_download_api_histories__history_id__contents__history_content_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /**
+         * Returns download metadata (size, filename) for the dataset.
+         * @description Downloads the whole dataset file. Clients must follow the 302 redirect this route may return.
+         */
+        head: operations["history_contents_download_api_histories__history_id__contents__history_content_id__download_head"];
         patch?: never;
         trace?: never;
     };
@@ -8208,8 +8276,18 @@ export interface components {
             history_id: unknown;
             /** Landing Uuid */
             landing_uuid?: unknown;
+            /** Preferred Object Store Id */
+            preferred_object_store_id?: unknown;
             /** Targets */
             targets: unknown;
+        };
+        /** Body_history_summary_api_ai_agents_history_summary_post */
+        Body_history_summary_api_ai_agents_history_summary_post: {
+            /**
+             * History Id
+             * @description Encoded id of the history to summarize.
+             */
+            history_id: string;
         };
         /** Body_submit_run_ga4gh_wes_v1_runs_post */
         Body_submit_run_ga4gh_wes_v1_runs_post: {
@@ -9096,6 +9174,8 @@ export interface components {
             description?: string | null;
             /** Device */
             device?: string | null;
+            /** Enable Direct Download */
+            enable_direct_download?: boolean | null;
             /** Name */
             name?: string | null;
             /** Object Expires After Days */
@@ -12711,6 +12791,11 @@ export interface components {
             history_id: string;
             /** Landing Uuid */
             landing_uuid?: string | null;
+            /**
+             * Preferred Object Store Id
+             * @description Optional preferred storage location id used when creating fetched datasets.
+             */
+            preferred_object_store_id?: string | null;
             /** Targets */
             targets: (
                 | components["schemas"]["DataElementsTarget"]
@@ -13072,8 +13157,10 @@ export interface components {
                 | "zenodo"
                 | "rspace"
                 | "dataverse"
+                | "cbioportal"
                 | "huggingface"
                 | "iiif"
+                | "mavedb"
                 | "omero"
                 | "ssh";
             /** Variables */
@@ -13542,7 +13629,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "dataset_input" | "dataset_output" | "collection_input" | "collection_output";
+            type: "dataset_input" | "dataset_output" | "collection_input" | "collection_output" | "dataset_element";
         };
         /** GraphNode */
         GraphNode: {
@@ -13556,6 +13643,10 @@ export interface components {
             hid?: number | null;
             /** Id */
             id: string;
+            /** Job State Summary */
+            job_state_summary?: {
+                [key: string]: number;
+            } | null;
             /** Name */
             name?: string | null;
             /**
@@ -17007,27 +17098,6 @@ export interface components {
              */
             generate_version?: string | null;
             /**
-             * Histories
-             * @description Histories associated with the invocation.
-             */
-            histories?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * History dataset collections
-             * @description History dataset collections associated with the invocation.
-             */
-            history_dataset_collections?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * History datasets
-             * @description History datasets associated with the invocation.
-             */
-            history_datasets?: {
-                [key: string]: unknown;
-            } | null;
-            /**
              * Workflow ID
              * @description The workflow this invocation has been triggered for.
              * @example 0123456789ABCDEF
@@ -17038,20 +17108,6 @@ export interface components {
              * @description Raw galaxy-flavored markdown contents of the report.
              */
             invocation_markdown?: string | null;
-            /**
-             * Invocations
-             * @description Other invocations associated with the invocation.
-             */
-            invocations?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Jobs
-             * @description Jobs associated with the invocation.
-             */
-            jobs?: {
-                [key: string]: unknown;
-            } | null;
             /**
              * Markdown
              * @description Raw galaxy-flavored markdown contents of the report.
@@ -17080,13 +17136,6 @@ export interface components {
              * @description The name of the user who owns this report.
              */
             username: string;
-            /**
-             * Workflows
-             * @description Workflows associated with the invocation.
-             */
-            workflows?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * InvocationSerializationView
@@ -19860,7 +19909,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "aws_s3" | "azure_blob" | "boto3" | "disk" | "generic_s3" | "onedata" | "rucio" | "irods";
+            type: "aws_s3" | "azure_blob" | "boto3" | "cloud" | "disk" | "generic_s3" | "onedata" | "rucio" | "irods";
             /** Variables */
             variables?:
                 | (
@@ -19914,6 +19963,26 @@ export interface components {
          * @enum {string}
          */
         OutputCompareType: "diff" | "re_match" | "sim_size" | "re_match_multiline" | "contains" | "image_diff";
+        /** OutputLabelHint */
+        OutputLabelHint: {
+            /**
+             * ID
+             * @description Decoded ID of the concrete HDA/HDCA output to expose.
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * Kind
+             * @description Whether the output ID identifies an HDA or an HDCA.
+             * @enum {string}
+             */
+            kind: "hda" | "hdca";
+            /**
+             * Label
+             * @description Workflow output label to assign to the exposed output.
+             */
+            label: string;
+        };
         /** OutputReferenceByLabel */
         OutputReferenceByLabel: {
             /**
@@ -20087,6 +20156,12 @@ export interface components {
         PageRevisionDetails: {
             /** Content */
             content?: string | null;
+            /**
+             * Content for Editor
+             * @description Raw text contents of the last page revision (type dependent on content_format).
+             * @default
+             */
+            content_editor: string | null;
             content_format?: components["schemas"]["PageContentFormat"] | null;
             /**
              * Create Time
@@ -24364,7 +24439,7 @@ export interface components {
             request: {
                 [key: string]: unknown;
             };
-            state: components["schemas"]["ToolRequestState"];
+            state?: components["schemas"]["ToolRequestState"] | null;
             state_message?: components["schemas"]["ToolRequestStateMessage"] | null;
         };
         /** ToolRequestImplicitCollectionReference */
@@ -24407,7 +24482,7 @@ export interface components {
             request: {
                 [key: string]: unknown;
             };
-            state: components["schemas"]["ToolRequestState"];
+            state?: components["schemas"]["ToolRequestState"] | null;
             state_message?: components["schemas"]["ToolRequestStateMessage"] | null;
         };
         /**
@@ -25276,6 +25351,8 @@ export interface components {
             description?: string | null;
             /** Device */
             device?: string | null;
+            /** Enable Direct Download */
+            enable_direct_download?: boolean | null;
             /** Hidden */
             hidden: boolean;
             /** Name */
@@ -25299,7 +25376,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "aws_s3" | "azure_blob" | "boto3" | "disk" | "generic_s3" | "onedata" | "rucio" | "irods";
+            type: "aws_s3" | "azure_blob" | "boto3" | "cloud" | "disk" | "generic_s3" | "onedata" | "rucio" | "irods";
             /**
              * Uuid
              * Format: uuid4
@@ -25391,8 +25468,10 @@ export interface components {
                 | "zenodo"
                 | "rspace"
                 | "dataverse"
+                | "cbioportal"
                 | "huggingface"
                 | "iiif"
+                | "mavedb"
                 | "omero"
                 | "ssh";
             /** Uri Root */
@@ -26397,6 +26476,11 @@ export interface components {
              */
             job_ids?: string[];
             /**
+             * Output Labels
+             * @description Concrete tool outputs to expose as workflow outputs, with labels.
+             */
+            output_labels?: components["schemas"]["OutputLabelHint"][];
+            /**
              * Workflow Name
              * @description The name for the extracted workflow.
              */
@@ -26469,6 +26553,12 @@ export interface components {
              */
             deleted: boolean;
             /**
+             * Exposed
+             * @description Whether this output should be preselected for exposure as a workflow output.
+             * @default false
+             */
+            exposed: boolean;
+            /**
              * HID
              * @description The history item ID (position in history).
              */
@@ -26490,10 +26580,25 @@ export interface components {
              */
             name: string;
             /**
+             * Output Name
+             * @description Workflow/tool output port name for this concrete output, when known.
+             */
+            output_name?: string | null;
+            /**
              * State
              * @description The state of the dataset or collection.
              */
             state: components["schemas"]["DatasetState"];
+            /**
+             * Suggested Name
+             * @description Suggested workflow output label for this concrete output.
+             */
+            suggested_name?: string | null;
+            /**
+             * Suggested Name Source
+             * @description Source used to derive the suggested workflow output label.
+             */
+            suggested_name_source?: ("renamed" | "rendered_label" | "bare_label" | "port_name") | null;
         };
         /** WorkflowExtractionPayload */
         WorkflowExtractionPayload: {
@@ -31202,6 +31307,51 @@ export interface operations {
             };
         };
     };
+    history_summary_api_ai_agents_history_summary_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_history_summary_api_ai_agents_history_summary_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     query_agent_api_ai_agents_query_post: {
         parameters: {
             query?: never;
@@ -33687,6 +33837,105 @@ export interface operations {
                 offset?: number | null;
                 /** @description If offset is set, this recommends 'how large' the next chunk should be. This is not respected or interpreted uniformly and should be interpreted as a very loose recommendation. Different datatypes interpret 'largeness' differently - for bam datasets this is a number of lines whereas for tabular datatypes this is interpreted as a number of bytes. */
                 ck_size?: number | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History Dataset. */
+                history_content_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    download_api_datasets__history_content_id__download_get: {
+        parameters: {
+            query?: {
+                /** @description The file extension when downloading the display data. Use the value `data` to let the server infer it from the data type. */
+                to_ext?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History Dataset. */
+                history_content_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Redirect to a URL serving the dataset directly from the backing object store. Only returned for whole-file downloads when the dataset's object store has `enable_direct_download` set. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    download_api_datasets__history_content_id__download_head: {
+        parameters: {
+            query?: {
+                /** @description The file extension when downloading the display data. Use the value `data` to let the server infer it from the data type. */
+                to_ext?: string | null;
             };
             header?: {
                 /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
@@ -38875,6 +39124,107 @@ export interface operations {
             };
         };
     };
+    history_contents_download_api_histories__history_id__contents__history_content_id__download_get: {
+        parameters: {
+            query?: {
+                /** @description The file extension when downloading the display data. Use the value `data` to let the server infer it from the data type. */
+                to_ext?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History Dataset. */
+                history_content_id: string;
+                history_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Redirect to a URL serving the dataset directly from the backing object store. Only returned for whole-file downloads when the dataset's object store has `enable_direct_download` set. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    history_contents_download_api_histories__history_id__contents__history_content_id__download_head: {
+        parameters: {
+            query?: {
+                /** @description The file extension when downloading the display data. Use the value `data` to let the server infer it from the data type. */
+                to_ext?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the History Dataset. */
+                history_content_id: string;
+                history_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     extra_files_history_api_histories__history_id__contents__history_content_id__extra_files_get: {
         parameters: {
             query?: never;
@@ -40472,7 +40822,7 @@ export interface operations {
     graph_api_histories__history_id__graph_get: {
         parameters: {
             query?: {
-                /** @description Maximum number of nodes. Applied at history scope. */
+                /** @description Maximum number of nodes. Applied at history scope. Capped at MAX_LIMIT (1000) by the manager. */
                 limit?: number;
                 /** @description Include deleted datasets and collections. */
                 include_deleted?: boolean;

@@ -7,7 +7,6 @@ import logging
 import sys
 import threading
 import traceback
-from typing import Optional
 
 from paste import httpexceptions
 
@@ -34,9 +33,7 @@ log = logging.getLogger(__name__)
 class GalaxyWebApplication(galaxy.webapps.base.webapp.WebApplication):
     injection_aware = True
 
-    def __init__(
-        self, galaxy_app: MinimalApp, session_cookie: str = "galaxysession", name: Optional[str] = None
-    ) -> None:
+    def __init__(self, galaxy_app: MinimalApp, session_cookie: str = "galaxysession", name: str | None = None) -> None:
         super().__init__(galaxy_app, session_cookie, name)
         self.session_factories.append(galaxy_app.install_model)
 
@@ -277,6 +274,7 @@ def app_pair(global_conf, load_app_kwds=None, wsgi_preflight=True, **kwargs):
     webapp.add_client_route("/histories/{history_id}/archive")
     webapp.add_client_route("/histories/{history_id}/invocations")
     webapp.add_client_route("/histories/{history_id}/graph")
+    webapp.add_client_route("/histories/{history_id}/graph/{path:.*?}")
     webapp.add_client_route("/histories/{history_id}/pages")
     webapp.add_client_route("/histories/{history_id}/pages/{page_id}")
     webapp.add_client_route("/histories/{history_id}/storage/runs")
