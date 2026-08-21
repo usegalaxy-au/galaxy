@@ -10,6 +10,7 @@ from galaxy.util import string_as_bool
 from ._caching_base import (
     CachingConcreteObjectStore,
     RemoteDataStream,
+    STREAM_CHUNK_SIZE,
 )
 from .caching import enable_cache_monitor
 from .s3 import parse_config_xml
@@ -418,7 +419,7 @@ class Cloud(CachingConcreteObjectStore):
         key = self.bucket.objects.get(rel_path)
         if key is None:
             return None
-        content = key.iter_content()
+        content = key.iter_content(chunk_size=STREAM_CHUNK_SIZE)
         # cloudbridge promises an iterable and nothing more, and what it hands back differs per
         # provider -- a wrapper around the S3 body, a swift generator, a BytesIO -- so release it
         # only if it knows how.
