@@ -9,7 +9,6 @@ import os.path
 from galaxy.util import string_as_bool
 from ._caching_base import (
     CachingConcreteObjectStore,
-    closing_stream,
     RemoteDataStream,
 )
 from .caching import enable_cache_monitor
@@ -423,7 +422,7 @@ class Cloud(CachingConcreteObjectStore):
         # cloudbridge promises an iterable and nothing more, and what it hands back differs per
         # provider -- a wrapper around the S3 body, a swift generator, a BytesIO -- so release it
         # only if it knows how.
-        return closing_stream(iter(content), getattr(content, "close", lambda: None))
+        return RemoteDataStream(iter(content), getattr(content, "close", lambda: None))
 
     def _download_directory_into_cache(self, rel_path, cache_path):
         # iter() (unlike list()) pages through the full result set.
