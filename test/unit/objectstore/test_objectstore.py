@@ -791,7 +791,7 @@ extra_dirs:
 
 def _cache_path_for(object_store, dataset):
     rel_path = object_store._construct_path(dataset)
-    return object_store._get_cache_path(rel_path, object_store._get_object_id(dataset))
+    return object_store._get_cache_path(rel_path)
 
 
 def _leftover_temp_files(cache_path):

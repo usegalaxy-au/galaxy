@@ -210,9 +210,8 @@ class CachingConcreteObjectStore(ConcreteObjectStore):
 
     def _get_data_stream(self, obj, **kwargs) -> DataStream | None:
         rel_path = self._construct_path(obj, **kwargs)
-        object_id = self._get_object_id(obj)
-        cache_path = self._get_cache_path(rel_path, object_id)
-        if self._in_cache(cache_path):
+        cache_path = self._get_cache_path(rel_path)
+        if self._in_cache(rel_path):
             # Serve the cached copy instead: it supports range requests and X-Accel offload.
             return None
         try:
@@ -221,8 +220,7 @@ class CachingConcreteObjectStore(ConcreteObjectStore):
                 # Backends report an unknown size as a negative number. Without it a stream cannot be
                 # checked for truncation, so leave this download to the pull path.
                 return None
-            cache_target = self._cache_shards.get_cache_target(object_id)
-            write_cache = cache_target.fits_in_cache(remote_size)
+            write_cache = self.cache_target.fits_in_cache(remote_size)
             # Opening the remote read comes last: everything that can decide against streaming has
             # already decided, so no bail-out below leaves an open connection with no owner.
             stream = self._stream_remote(rel_path)
